@@ -11,11 +11,32 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
     
     public event Action<string> OnInitializeConfigValues;
     public event Action<string> OnSyncRedSheepIdentifier;
+    public event Action<string, ulong> OnChangeTargetPlayer;
+    public event Action<string> OnEnterDeathState;
+    public event Action<string, int> OnChangeBehaviourState;
     
     private void Start()
     {
         _mls = Logger.CreateLogSource(
             $"{TheRedSheepPlugin.ModGuid} | The Red Sheep Netcode Controller");
+    }
+    
+    [ClientRpc]
+    public void ChangeBehaviourStateClientRpc(string receivedRedSheepId, int newBehaviourStateIndex)
+    {
+        OnChangeBehaviourState?.Invoke(receivedRedSheepId, newBehaviourStateIndex);
+    }
+    
+    [ClientRpc]
+    public void ChangeTargetPlayerClientRpc(string receivedRedSheepId, ulong targetPlayerObjectId)
+    {
+        OnChangeTargetPlayer?.Invoke(receivedRedSheepId, targetPlayerObjectId);
+    }
+    
+    [ClientRpc]
+    public void EnterDeathStateClientRpc(string receivedRedSheepId)
+    {
+        OnEnterDeathState?.Invoke(receivedRedSheepId);
     }
     
     [ClientRpc]
