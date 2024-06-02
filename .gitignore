@@ -1,0 +1,5 @@
+NuGet.Config
+
+obj/
+bin/
+.git/
