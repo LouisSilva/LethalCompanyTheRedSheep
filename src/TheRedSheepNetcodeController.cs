@@ -1,6 +1,7 @@
 ﻿using BepInEx.Logging;
 using System;
 using Unity.Netcode;
+using UnityEngine;
 using Logger = BepInEx.Logging.Logger;
 
 namespace LethalCompanyTheRedSheep;
@@ -9,6 +10,9 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
 {
     private ManualLogSource _mls;
     
+#pragma warning disable 0649
+    [SerializeField] private Animator animator;
+#pragma warning restore 0649
     public event Action<string> OnInitializeConfigValues;
     public event Action<string> OnSyncRedSheepIdentifier;
     public event Action<string, ulong> OnChangeTargetPlayer;
@@ -17,12 +21,44 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
     public event Action<string, int> OnDoAnimation;
     public event Action<string, int, bool> OnChangeAnimationParameterBool;
     public event Action<string> OnIdleCycleComplete;
+    public event Action<string> OnPlayTransformationAnimationVfx;
+    public event Action<string> OnCompleteTransformation;
     
     private void Start()
     {
         _mls = Logger.CreateLogSource(
             $"{TheRedSheepPlugin.ModGuid} | The Red Sheep Netcode Controller");
     }
+
+    private void Awake()
+    {
+        AddStateBehaviour();
+    }
+
+    private void AddStateBehaviour()
+    {
+        StateMachineBehaviour[] behaviours = animator.GetBehaviours<StateMachineBehaviour>();
+        foreach (StateMachineBehaviour behaviour in behaviours)
+        {
+            if (behaviour is StationaryStateBehaviour stationaryStateBehaviour)
+            {
+                stationaryStateBehaviour.Initialize(this);
+            }
+        }
+    }
+
+    [ServerRpc]
+    public void CompleteTransformationServerRpc(string receivedRedSheepId)
+    {
+        OnCompleteTransformation?.Invoke(receivedRedSheepId);
+    }
+
+    [ClientRpc]
+    public void PlayTransformationAnimationVfxClientRpc(string receivedRedSheepId)
+    {
+        OnPlayTransformationAnimationVfx?.Invoke(receivedRedSheepId);
+    }
+    
 
     [ServerRpc (RequireOwnership = false)]
     public void IdleCycleCompleteServerRpc(string receivedRedSheepId)
@@ -40,6 +76,12 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
     public void DoAnimationClientRpc(string receivedRedSheepId, int animationId)
     {
         OnDoAnimation?.Invoke(receivedRedSheepId, animationId);
+    }
+    
+    [ServerRpc(RequireOwnership = false)]
+    public void ChangeBehaviourStateServerRpc(string receivedRedSheepId, int newBehaviourStateIndex)
+    {
+        ChangeBehaviourStateClientRpc(receivedRedSheepId, newBehaviourStateIndex);
     }
     
     [ClientRpc]

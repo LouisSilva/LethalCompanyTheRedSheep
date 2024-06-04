@@ -1,5 +1,6 @@
 ﻿using System;
 using BepInEx.Logging;
+using GameNetcodeStuff;
 using UnityEngine;
 using Logger = BepInEx.Logging.Logger;
 using Random = UnityEngine.Random;
@@ -12,7 +13,7 @@ public class TheRedSheepServer : EnemyAI
     private ManualLogSource _mls;
     private string _redSheepId;
     
-    private enum States
+    public enum States
     {
         Roaming,
         Idle,
@@ -22,14 +23,17 @@ public class TheRedSheepServer : EnemyAI
     }
     
 #pragma warning disable 0649
-    [Header("Controllers")] [Space(5f)] [SerializeField]
-    private TheRedSheepNetcodeController netcodeController;
+    [Header("Controllers")] [Space(5f)] 
+    [SerializeField] private Transform transformedRedSheepEye;
+    [SerializeField] private TheRedSheepNetcodeController netcodeController;
 #pragma warning restore 0649
     
     [SerializeField] private float maxRoamingRadius = 100f;
     [SerializeField] private float viewWidth = 135f;
     [SerializeField] private int viewRange = 150;
     [SerializeField] private int proximityAwareness = 3;
+
+    private Vector3 _targetPosition;
     
     private float _agentMaxAcceleration;
     private float _agentMaxSpeed;
@@ -40,11 +44,13 @@ public class TheRedSheepServer : EnemyAI
     private void OnEnable()
     {
         netcodeController.OnIdleCycleComplete += HandleIdleCycleComplete;
+        netcodeController.OnCompleteTransformation += HandleCompleteTransformation;
     }
 
     private void OnDisable()
     {
         netcodeController.OnIdleCycleComplete -= HandleIdleCycleComplete;
+        netcodeController.OnCompleteTransformation -= HandleCompleteTransformation;
     }
 
     public override void Start()
@@ -61,7 +67,7 @@ public class TheRedSheepServer : EnemyAI
         InitializeConfigValues();
         
         netcodeController.SyncRedSheepIdClientRpc(_redSheepId);
-        SwitchBehaviourStateLocally(States.Roaming);
+        InitializeState((int)States.Roaming);
         LogDebug("Red sheep spawned");
     }
 
@@ -105,7 +111,7 @@ public class TheRedSheepServer : EnemyAI
             case (int)States.Roaming:
             {
                 // Check if the sheep has reached its destination
-                if (Vector3.Distance(transform.position, targetNode.position) <= 3)
+                if (Vector3.Distance(transform.position, _targetPosition) <= 3)
                 {
                     // Start to idle for a bit before going to a new place
                     SwitchBehaviourStateLocally(States.Idle);
@@ -121,16 +127,29 @@ public class TheRedSheepServer : EnemyAI
         }
     }
 
+    private void HandleCompleteTransformation(string receivedRedSheepId)
+    {
+        if (_redSheepId != receivedRedSheepId) return;
+
+        eye = transformedRedSheepEye;
+        SwitchBehaviourStateLocally(States.Transformed);
+    }
+
     private void HandleIdleCycleComplete(string receivedRedSheepId)
     {
         if (_redSheepId != receivedRedSheepId) return;
         if (!IsServer) return;
+        if (currentBehaviourStateIndex != (int)States.Idle) return;
 
         _idleStateCyclesLeft--;
         LogDebug($"There are now {_idleStateCyclesLeft} idle state cycles left");
         if (_idleStateCyclesLeft <= 0)
         {
             SwitchBehaviourStateLocally(States.Roaming);
+        }
+        else
+        {
+            PickRandomIdleAnimation();
         }
     }
 
@@ -139,6 +158,7 @@ public class TheRedSheepServer : EnemyAI
         int maxOffset = Mathf.Max(1, Mathf.FloorToInt(allAINodes.Length * 0.1f));
         Transform farAwayTransform = random ? ChooseFarthestNodeFromPosition(transform.position, offset: Random.Range(0, maxOffset)) : ChooseFarthestNodeFromPosition(transform.position);
         targetNode = farAwayTransform;
+        _targetPosition = farAwayTransform.position;
         
         if (!SetDestinationToPosition(farAwayTransform.position, true))
         {
@@ -169,6 +189,40 @@ public class TheRedSheepServer : EnemyAI
         netcodeController.DoAnimationClientRpc(_redSheepId, animationIdToPlay); ;
     }
 
+    public override void HitEnemy(int force = 1, PlayerControllerB playerWhoHit = null, bool playHitSFX = false,
+        int hitId = -1)
+    {
+        base.HitEnemy(force, playerWhoHit, playHitSFX, hitId);
+        if (!IsServer) return;
+        if (isEnemyDead || currentBehaviourStateIndex == (int)States.Dead) return;
+        if (_takeDamageCooldown > 0) return;
+
+        enemyHP -= force;
+        _takeDamageCooldown = 0.05f;
+        ChangeTargetPlayer(playerWhoHit);
+        if (enemyHP > 0)
+        {
+            if (currentBehaviourStateIndex is not ((int)States.Transforming or (int)States.Transformed))
+            {
+                SwitchBehaviourStateLocally(States.Transforming);
+            }
+        }
+        else
+        {
+            netcodeController.EnterDeathStateClientRpc(_redSheepId);
+            KillEnemyClientRpc(false);
+            SwitchBehaviourStateLocally(States.Dead);
+        }
+    }
+
+    private void ChangeTargetPlayer(PlayerControllerB newTargetPlayer)
+    {
+        if (newTargetPlayer == null) return;
+        if (newTargetPlayer == targetPlayer) return;
+        targetPlayer = newTargetPlayer;
+        netcodeController.ChangeTargetPlayerClientRpc(_redSheepId, newTargetPlayer.playerClientId);
+    }
+
     /// <summary>
     /// Resets the required variables and runs setup functions for each particular behaviour state
     /// </summary>
@@ -176,6 +230,7 @@ public class TheRedSheepServer : EnemyAI
     private void InitializeState(int state)
     {
         if (!IsServer) return;
+        LogDebug($"Initializing state: {state}");
         switch (state)
         {
             case (int)States.Roaming:
@@ -201,6 +256,18 @@ public class TheRedSheepServer : EnemyAI
                 
                 netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, false);
                 PickRandomIdleAnimation();
+                
+                break;
+            }
+
+            case (int)States.Transforming:
+            {
+                _agentMaxAcceleration = 0f;
+                _agentMaxSpeed = 0f;
+                agent.acceleration = 0f;
+                moveTowardsDestination = false;
+
+                netcodeController.PlayTransformationAnimationVfxClientRpc(_redSheepId);
                 
                 break;
             }

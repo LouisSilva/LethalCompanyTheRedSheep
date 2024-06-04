@@ -10,24 +10,37 @@ public class StationaryStateBehaviour : StateMachineBehaviour
     private ManualLogSource _mls;
     private string _redSheepId;
     
-#pragma warning disable 0649
-    [SerializeField] private TheRedSheepNetcodeController netcodeController;
-#pragma warning restore 0649
+    private TheRedSheepNetcodeController _netcodeController;
 
     private void OnEnable()
     {
-        netcodeController.OnSyncRedSheepIdentifier += HandleSyncRedSheepIdentifier;
+        if (_netcodeController == null) return;
+        _netcodeController.OnSyncRedSheepIdentifier += HandleSyncRedSheepIdentifier;
     }
 
     private void OnDisable()
     {
-        netcodeController.OnSyncRedSheepIdentifier -= HandleSyncRedSheepIdentifier;
+        if (_netcodeController == null) return;
+        _netcodeController.OnSyncRedSheepIdentifier -= HandleSyncRedSheepIdentifier;
+    }
+
+    public void Initialize(TheRedSheepNetcodeController receivedNetcodeController)
+    {
+        _netcodeController = receivedNetcodeController;
+        OnEnable();
     }
 
     public override void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
-        if (!NetworkManager.Singleton.IsClient || !netcodeController.IsOwner) return;
-        netcodeController.IdleCycleCompleteServerRpc(_redSheepId);
+        if (_netcodeController == null)
+        {
+            LogDebug("Netcode Controller is null");
+            return;
+        }
+        
+        if (!NetworkManager.Singleton.IsClient || !_netcodeController.IsOwner) return;
+        LogDebug("Idle cycle complete");
+        _netcodeController.IdleCycleCompleteServerRpc(_redSheepId);
     }
     
     private void HandleSyncRedSheepIdentifier(string receivedRedSheepId)
@@ -35,7 +48,7 @@ public class StationaryStateBehaviour : StateMachineBehaviour
         _redSheepId = receivedRedSheepId;
         _mls?.Dispose();
         _mls = Logger.CreateLogSource(
-            $"{TheRedSheepPlugin.ModGuid} | The Red Sheep Client {_redSheepId}");
+            $"{TheRedSheepPlugin.ModGuid} | The Red Sheep Stationary State Behaviour {_redSheepId}");
         
         LogDebug("Successfully synced red sheep identifier");
     }
