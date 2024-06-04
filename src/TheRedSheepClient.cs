@@ -10,10 +10,18 @@ public class TheRedSheepClient : MonoBehaviour
 {
     private ManualLogSource _mls;
     private string _redSheepId;
+
+    public static readonly int IsWalking = Animator.StringToHash("Walking");
+    public static readonly int Transformation = Animator.StringToHash("Transformation");
+    public static readonly int Idle1 = Animator.StringToHash("Idle1");
+    public static readonly int Idle2 = Animator.StringToHash("Idle2");
+    public static readonly int Idle3 = Animator.StringToHash("Idle3");
+    public static readonly int WalkSpeed = Animator.StringToHash("WalkSpeed");
     
 #pragma warning disable 0649
-    [Header("Controllers")] [Space(5f)] [SerializeField]
-    private TheRedSheepNetcodeController netcodeController;
+    [Header("Controllers")] [Space(5f)]
+    [SerializeField] private Animator animator;
+    [SerializeField] private TheRedSheepNetcodeController netcodeController;
 #pragma warning restore 0649
 
     private PlayerControllerB _targetPlayer;
@@ -27,6 +35,8 @@ public class TheRedSheepClient : MonoBehaviour
         netcodeController.OnChangeBehaviourState += HandleChangeBehaviourStateIndex;
         netcodeController.OnChangeTargetPlayer += HandleChangeTargetPlayer;
         netcodeController.OnEnterDeathState += HandleEnterDeathState;
+        netcodeController.OnChangeAnimationParameterBool += SetBool;
+        netcodeController.OnDoAnimation += SetTrigger;
     }
 
     private void OnDisable()
@@ -36,6 +46,8 @@ public class TheRedSheepClient : MonoBehaviour
         netcodeController.OnChangeBehaviourState -= HandleChangeBehaviourStateIndex;
         netcodeController.OnChangeTargetPlayer -= HandleChangeTargetPlayer;
         netcodeController.OnEnterDeathState -= HandleEnterDeathState;
+        netcodeController.OnChangeAnimationParameterBool -= SetBool;
+        netcodeController.OnDoAnimation -= SetTrigger;
     }
 
     private void Start()
@@ -76,6 +88,24 @@ public class TheRedSheepClient : MonoBehaviour
     private void HandleEnterDeathState(string receivedRedSheepId)
     {
         if (_redSheepId != receivedRedSheepId) return;
+    }
+
+    private void SetBool(string receivedRedSheepId, int animationParameter, bool value)
+    {
+        if (_redSheepId != receivedRedSheepId) return;
+        animator.SetBool(animationParameter, value);
+    }
+
+    private void SetTrigger(string receivedRedSheepId, int animationParameter)
+    {
+        if (_redSheepId != receivedRedSheepId) return;
+        animator.SetTrigger(animationParameter);
+    }
+
+    private void SetFloat(string receivedRedSheepId, int animationParameter, float value)
+    {
+        if (_redSheepId != receivedRedSheepId) return;
+        animator.SetFloat(animationParameter, value);
     }
     
     private void HandleSyncRedSheepIdentifier(string receivedRedSheepId)

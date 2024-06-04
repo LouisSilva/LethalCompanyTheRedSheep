@@ -15,6 +15,7 @@ public class TheRedSheepServer : EnemyAI
     private enum States
     {
         Roaming,
+        Idle,
         Transforming,
         Transformed,
         Dead
@@ -66,7 +67,15 @@ public class TheRedSheepServer : EnemyAI
 
         switch (currentBehaviourStateIndex)
         {
-            
+            case (int)States.Roaming:
+            {
+                break;
+            }
+
+            case (int)States.Idle:
+            {
+                break;
+            }
         }
     }
 
@@ -88,15 +97,20 @@ public class TheRedSheepServer : EnemyAI
                 if (Vector3.Distance(transform.position, targetNode.position) <= 3)
                 {
                     // Pick new destination
-                    ChooseFarAwayNode(true);
+                    GoToFarAwayNode(true);
                 }
                 
+                break;
+            }
+
+            case (int)States.Idle:
+            {
                 break;
             }
         }
     }
 
-    private void ChooseFarAwayNode(bool random = false)
+    private void GoToFarAwayNode(bool random = false)
     {
         int maxOffset = Mathf.Max(1, Mathf.FloorToInt(allAINodes.Length * 0.1f));
         Transform farAwayTransform = random ? ChooseFarthestNodeFromPosition(transform.position, offset: Random.Range(0, maxOffset)) : ChooseFarthestNodeFromPosition(transform.position);
@@ -123,8 +137,9 @@ public class TheRedSheepServer : EnemyAI
                 _agentMaxAcceleration = 10f; // TODO: Make configurable
                 
                 // Pick first node to go to
-                ChooseFarAwayNode(true);
-
+                GoToFarAwayNode(true);
+                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, true);
+                
                 break;
             }
         }

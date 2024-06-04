@@ -14,11 +14,25 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
     public event Action<string, ulong> OnChangeTargetPlayer;
     public event Action<string> OnEnterDeathState;
     public event Action<string, int> OnChangeBehaviourState;
+    public event Action<string, int> OnDoAnimation;
+    public event Action<string, int, bool> OnChangeAnimationParameterBool;
     
     private void Start()
     {
         _mls = Logger.CreateLogSource(
             $"{TheRedSheepPlugin.ModGuid} | The Red Sheep Netcode Controller");
+    }
+
+    [ClientRpc]
+    public void ChangeAnimationParameterBoolClientRpc(string receivedRedSheepId, int animationId, bool value)
+    {
+        OnChangeAnimationParameterBool?.Invoke(receivedRedSheepId, animationId, value);
+    }
+
+    [ClientRpc]
+    public void DoAnimationClientRpc(string receivedRedSheepId, int animationId)
+    {
+        OnDoAnimation?.Invoke(receivedRedSheepId, animationId);
     }
     
     [ClientRpc]
