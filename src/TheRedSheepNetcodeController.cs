@@ -16,11 +16,18 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
     public event Action<string, int> OnChangeBehaviourState;
     public event Action<string, int> OnDoAnimation;
     public event Action<string, int, bool> OnChangeAnimationParameterBool;
+    public event Action<string> OnIdleCycleComplete;
     
     private void Start()
     {
         _mls = Logger.CreateLogSource(
             $"{TheRedSheepPlugin.ModGuid} | The Red Sheep Netcode Controller");
+    }
+
+    [ServerRpc (RequireOwnership = false)]
+    public void IdleCycleCompleteServerRpc(string receivedRedSheepId)
+    {
+        OnIdleCycleComplete?.Invoke(receivedRedSheepId);
     }
 
     [ClientRpc]

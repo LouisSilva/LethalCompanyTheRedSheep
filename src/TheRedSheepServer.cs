@@ -22,7 +22,6 @@ public class TheRedSheepServer : EnemyAI
     }
     
 #pragma warning disable 0649
-
     [Header("Controllers")] [Space(5f)] [SerializeField]
     private TheRedSheepNetcodeController netcodeController;
 #pragma warning restore 0649
@@ -35,6 +34,18 @@ public class TheRedSheepServer : EnemyAI
     private float _agentMaxAcceleration;
     private float _agentMaxSpeed;
     private float _takeDamageCooldown;
+
+    private int _idleStateCyclesLeft;
+
+    private void OnEnable()
+    {
+        netcodeController.OnIdleCycleComplete += HandleIdleCycleComplete;
+    }
+
+    private void OnDisable()
+    {
+        netcodeController.OnIdleCycleComplete -= HandleIdleCycleComplete;
+    }
 
     public override void Start()
     {
@@ -96,8 +107,8 @@ public class TheRedSheepServer : EnemyAI
                 // Check if the sheep has reached its destination
                 if (Vector3.Distance(transform.position, targetNode.position) <= 3)
                 {
-                    // Pick new destination
-                    GoToFarAwayNode(true);
+                    // Start to idle for a bit before going to a new place
+                    SwitchBehaviourStateLocally(States.Idle);
                 }
                 
                 break;
@@ -107,6 +118,19 @@ public class TheRedSheepServer : EnemyAI
             {
                 break;
             }
+        }
+    }
+
+    private void HandleIdleCycleComplete(string receivedRedSheepId)
+    {
+        if (_redSheepId != receivedRedSheepId) return;
+        if (!IsServer) return;
+
+        _idleStateCyclesLeft--;
+        LogDebug($"There are now {_idleStateCyclesLeft} idle state cycles left");
+        if (_idleStateCyclesLeft <= 0)
+        {
+            SwitchBehaviourStateLocally(States.Roaming);
         }
     }
 
@@ -120,6 +144,29 @@ public class TheRedSheepServer : EnemyAI
         {
             _mls.LogWarning("This should not happen");
         }
+    }
+
+    private void PickRandomIdleAnimation()
+    {
+        if (!IsServer) return;
+
+        int animationToPlay = Random.Range(1, 4);
+        int animationIdToPlay = animationToPlay switch
+        {
+            1 => TheRedSheepClient.Idle1,
+            2 => TheRedSheepClient.Idle2,
+            3 => TheRedSheepClient.Idle3,
+            _ => 0,
+        };
+
+        if (animationIdToPlay == 0)
+        {
+            LogDebug($"Unable to play animation with random number: {animationToPlay}");
+            return;
+        }
+        
+        LogDebug($"Playing animation with id: ({animationToPlay}, {animationIdToPlay})");
+        netcodeController.DoAnimationClientRpc(_redSheepId, animationIdToPlay); ;
     }
 
     /// <summary>
@@ -139,6 +186,21 @@ public class TheRedSheepServer : EnemyAI
                 // Pick first node to go to
                 GoToFarAwayNode(true);
                 netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, true);
+                
+                break;
+            }
+
+            case (int)States.Idle:
+            {
+                _agentMaxAcceleration = 10f;
+                _agentMaxSpeed = 0f;
+                agent.speed = 0f;
+                agent.acceleration = 0f;
+                moveTowardsDestination = false;
+                _idleStateCyclesLeft = Random.Range(1, 6);
+                
+                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, false);
+                PickRandomIdleAnimation();
                 
                 break;
             }

@@ -65,7 +65,7 @@ public class TheRedSheepPlugin : BaseUnityPlugin
 
     private void SetupTheRedSheep()
     {
-        _theRedSheepEnemyType = Assets.MainAssetBundle.LoadAsset<EnemyType>("TheRedSheep");
+        _theRedSheepEnemyType = Assets.MainAssetBundle.LoadAsset<EnemyType>("TheRedSheepEnemyType");
         
         TerminalNode theRedSheepTerminalNode = Assets.MainAssetBundle.LoadAsset<TerminalNode>("TheRedSheepTN");
         TerminalKeyword theRedSheepTerminalKeyword = Assets.MainAssetBundle.LoadAsset<TerminalKeyword>("TheRedSheepTK");
