@@ -18,7 +18,9 @@ public class TheRedSheepServer : EnemyAI
         Roaming,
         Idle,
         Transforming,
-        Transformed,
+        TransformedRoaming,
+        TransformedIdle,
+        TransformedAttacking,
         Dead
     }
     
@@ -132,7 +134,7 @@ public class TheRedSheepServer : EnemyAI
         if (_redSheepId != receivedRedSheepId) return;
 
         eye = transformedRedSheepEye;
-        SwitchBehaviourStateLocally(States.Transformed);
+        SwitchBehaviourStateLocally(States.Roaming);
     }
 
     private void HandleIdleCycleComplete(string receivedRedSheepId)
@@ -145,7 +147,16 @@ public class TheRedSheepServer : EnemyAI
         LogDebug($"There are now {_idleStateCyclesLeft} idle state cycles left");
         if (_idleStateCyclesLeft <= 0)
         {
-            SwitchBehaviourStateLocally(States.Roaming);
+            switch (currentBehaviourStateIndex)
+            {
+                case (int)States.Idle:
+                    SwitchBehaviourStateLocally(States.Roaming);
+                    break;
+                
+                case (int)States.TransformedIdle:
+                    SwitchBehaviourStateLocally(States.TransformedIdle);
+                    break;
+            }
         }
         else
         {
@@ -202,7 +213,7 @@ public class TheRedSheepServer : EnemyAI
         ChangeTargetPlayer(playerWhoHit);
         if (enemyHP > 0)
         {
-            if (currentBehaviourStateIndex is not ((int)States.Transforming or (int)States.Transformed))
+            if (currentBehaviourStateIndex is (int)States.Roaming or (int)States.Idle)
             {
                 SwitchBehaviourStateLocally(States.Transforming);
             }

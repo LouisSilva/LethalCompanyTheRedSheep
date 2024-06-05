@@ -5,6 +5,7 @@ using GameNetcodeStuff;
 using Unity.Netcode;
 using Logger = BepInEx.Logging.Logger;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace LethalCompanyTheRedSheep;
 
@@ -22,8 +23,8 @@ public class TheRedSheepClient : MonoBehaviour
     
 #pragma warning disable 0649
     [Header("Models")] [Space(5f)]
-    [SerializeField] private GameObject NormalRedSheepModel;
-    [SerializeField] private GameObject TransformedRedSheepModel;
+    [SerializeField] private GameObject normalRedSheepModel;
+    [SerializeField] private GameObject transformedRedSheepModel;
 
     [Header("Audio Sources")] [Space(5f)] 
     [SerializeField] private AudioSource creatureVoice;
@@ -71,8 +72,8 @@ public class TheRedSheepClient : MonoBehaviour
         _mls = Logger.CreateLogSource(
             $"{TheRedSheepPlugin.ModGuid} | The Red Sheep Client {_redSheepId}");
         
-        NormalRedSheepModel.SetActive(true);
-        TransformedRedSheepModel.SetActive(false);
+        normalRedSheepModel.SetActive(true);
+        transformedRedSheepModel.SetActive(false);
 
         creatureVoice.gameObject.transform.position = new Vector3(1.538f, 2.446f, 0.067f);
     }
@@ -94,9 +95,8 @@ public class TheRedSheepClient : MonoBehaviour
         SetTrigger(_redSheepId, Transforming);
     }
 
-    public void OnAnimationEventTransformationAnimationComplete() // todo: create animator state behaviour for "start transformation" state to call this function
+    public void StartTransformationProcedure()
     {
-        // todo: create animator state behaviour for "transformed stationary" state
         StartCoroutine(TransformationProcedure()); 
     }
 
@@ -107,8 +107,8 @@ public class TheRedSheepClient : MonoBehaviour
         if (NetworkManager.Singleton.IsServer && netcodeController.IsOwner) netcodeController.CompleteTransformationServerRpc(_redSheepId);
         
         yield return new WaitForSeconds(0.5f);
-        Destroy(NormalRedSheepModel.gameObject);
-        TransformedRedSheepModel.SetActive(true);
+        Destroy(normalRedSheepModel.gameObject);
+        transformedRedSheepModel.SetActive(true);
         creatureVoice.gameObject.transform.position = new Vector3(0.784f, 2.802f, -0.024f);
     }
 
