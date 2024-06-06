@@ -15,7 +15,9 @@ public class TheRedSheepClient : MonoBehaviour
     private string _redSheepId;
 
     public static readonly int IsWalking = Animator.StringToHash("Walking");
-    public static readonly int Transforming = Animator.StringToHash("Transforming");
+    public static readonly int IsRunning = Animator.StringToHash("Running");
+    public static readonly int StartTransformation = Animator.StringToHash("Start Transformation");
+    public static readonly int EndTransformation = Animator.StringToHash("End Transformation");
     public static readonly int Idle1 = Animator.StringToHash("Idle1");
     public static readonly int Idle2 = Animator.StringToHash("Idle2");
     public static readonly int Idle3 = Animator.StringToHash("Idle3");
@@ -52,7 +54,6 @@ public class TheRedSheepClient : MonoBehaviour
         netcodeController.OnEnterDeathState += HandleEnterDeathState;
         netcodeController.OnChangeAnimationParameterBool += SetBool;
         netcodeController.OnDoAnimation += SetTrigger;
-        netcodeController.OnPlayTransformationAnimationVfx += HandlePlayTransformationAnimationVfx;
     }
 
     private void OnDisable()
@@ -64,7 +65,6 @@ public class TheRedSheepClient : MonoBehaviour
         netcodeController.OnEnterDeathState -= HandleEnterDeathState;
         netcodeController.OnChangeAnimationParameterBool -= SetBool;
         netcodeController.OnDoAnimation -= SetTrigger;
-        netcodeController.OnPlayTransformationAnimationVfx -= HandlePlayTransformationAnimationVfx;
     }
 
     private void Start()
@@ -72,15 +72,15 @@ public class TheRedSheepClient : MonoBehaviour
         _mls = Logger.CreateLogSource(
             $"{TheRedSheepPlugin.ModGuid} | The Red Sheep Client {_redSheepId}");
         
-        normalRedSheepModel.SetActive(true);
-        transformedRedSheepModel.SetActive(false);
+        normalRedSheepModel.gameObject.SetActive(true);
+        transformedRedSheepModel.gameObject.SetActive(false);
 
         creatureVoice.gameObject.transform.position = new Vector3(1.538f, 2.446f, 0.067f);
     }
 
     private void FixedUpdate()
     {
-        if (_currentBehaviourStateIndex is (int)TheRedSheepServer.States.Idle)
+        if (_currentBehaviourStateIndex is (int)TheRedSheepServer.States.NIdle)
         {
             Vector3 position = transform.position;
             _agentCurrentSpeed = Mathf.Lerp(_agentCurrentSpeed, (position - _agentLastPosition).magnitude / Time.deltaTime, 0.75f);
@@ -88,28 +88,28 @@ public class TheRedSheepClient : MonoBehaviour
         }
     }
 
-    private void HandlePlayTransformationAnimationVfx(string receivedRedSheepId)
-    {
-        if (_redSheepId != receivedRedSheepId) return;
-        
-        SetTrigger(_redSheepId, Transforming);
-    }
-
-    public void StartTransformationProcedure()
+    public void OnAnimationEventStartTransformationProcedure()
     {
         StartCoroutine(TransformationProcedure()); 
     }
 
+    public void OnAnimationEventStopSmoke()
+    {
+        
+    }
+
     private IEnumerator TransformationProcedure()
     {
-        yield return new WaitForSeconds(0.5f);
+        yield return new WaitForSeconds(0.2f);
         // Todo: add smoke
+        yield return new WaitForSeconds(0.5f);
         if (NetworkManager.Singleton.IsServer && netcodeController.IsOwner) netcodeController.CompleteTransformationServerRpc(_redSheepId);
         
         yield return new WaitForSeconds(0.5f);
         Destroy(normalRedSheepModel.gameObject);
         transformedRedSheepModel.SetActive(true);
         creatureVoice.gameObject.transform.position = new Vector3(0.784f, 2.802f, -0.024f);
+        SetTrigger(_redSheepId, EndTransformation);
     }
 
     /// <summary>

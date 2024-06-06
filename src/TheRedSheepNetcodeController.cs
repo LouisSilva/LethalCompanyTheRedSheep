@@ -22,7 +22,6 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
     public event Action<string, int> OnDoAnimation;
     public event Action<string, int, bool> OnChangeAnimationParameterBool;
     public event Action<string> OnIdleCycleComplete;
-    public event Action<string> OnPlayTransformationAnimationVfx;
     public event Action<string> OnCompleteTransformation;
     
     private void Start()
@@ -33,17 +32,18 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
 
     private void Awake()
     {
-        AddStateBehaviour();
+        AddStateMachineBehaviours();
     }
 
-    private void AddStateBehaviour()
+    private void AddStateMachineBehaviours()
     {
         StateMachineBehaviour[] behaviours = animator.GetBehaviours<StateMachineBehaviour>();
+        TheRedSheepClient sheepClient = GetComponent<TheRedSheepClient>();
         foreach (StateMachineBehaviour behaviour in behaviours)
         {
-            if (behaviour is StationaryStateBehaviour stationaryStateBehaviour)
+            if (behaviour is BaseStateMachineBehaviour baseStateMachineBehaviour)
             {
-                stationaryStateBehaviour.Initialize(this, GetComponent<TheRedSheepClient>());
+                baseStateMachineBehaviour.Initialize(this, sheepClient);
             }
         }
     }
@@ -53,14 +53,7 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
     {
         OnCompleteTransformation?.Invoke(receivedRedSheepId);
     }
-
-    [ClientRpc]
-    public void PlayTransformationAnimationVfxClientRpc(string receivedRedSheepId)
-    {
-        OnPlayTransformationAnimationVfx?.Invoke(receivedRedSheepId);
-    }
     
-
     [ServerRpc (RequireOwnership = false)]
     public void IdleCycleCompleteServerRpc(string receivedRedSheepId)
     {

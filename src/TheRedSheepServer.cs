@@ -1,10 +1,12 @@
 ﻿using System;
+using System.Linq;
 using BepInEx.Logging;
 using GameNetcodeStuff;
 using UnityEngine;
 using Logger = BepInEx.Logging.Logger;
 using Random = UnityEngine.Random;
 using Vector3 = UnityEngine.Vector3;
+// ReSharper disable InconsistentNaming
 
 namespace LethalCompanyTheRedSheep;
 
@@ -16,13 +18,16 @@ public class TheRedSheepServer : EnemyAI
     public enum States
     {
         Roaming,
-        Idle,
+        NIdle,
         Transforming,
-        TransformedRoaming,
-        TransformedIdle,
-        TransformedAttacking,
+        TIdle,
+        InvestigatingTargetPosition,
+        SearchingForPlayers,
+        Attacking,
         Dead
     }
+
+    [SerializeField] private AISearchRoutine searchForPlayers;
     
 #pragma warning disable 0649
     [Header("Controllers")] [Space(5f)] 
@@ -30,7 +35,7 @@ public class TheRedSheepServer : EnemyAI
     [SerializeField] private TheRedSheepNetcodeController netcodeController;
 #pragma warning restore 0649
     
-    [SerializeField] private float maxRoamingRadius = 100f;
+    [SerializeField] private float maxSearchRadius = 100f;
     [SerializeField] private float viewWidth = 135f;
     [SerializeField] private int viewRange = 150;
     [SerializeField] private int proximityAwareness = 3;
@@ -40,6 +45,7 @@ public class TheRedSheepServer : EnemyAI
     private float _agentMaxAcceleration;
     private float _agentMaxSpeed;
     private float _takeDamageCooldown;
+    private float _transformedIdleTimer;
 
     private int _idleStateCyclesLeft;
 
@@ -91,7 +97,7 @@ public class TheRedSheepServer : EnemyAI
                 break;
             }
 
-            case (int)States.Idle:
+            case (int)States.NIdle:
             {
                 break;
             }
@@ -116,17 +122,108 @@ public class TheRedSheepServer : EnemyAI
                 if (Vector3.Distance(transform.position, _targetPosition) <= 3)
                 {
                     // Start to idle for a bit before going to a new place
-                    SwitchBehaviourStateLocally(States.Idle);
+                    SwitchBehaviourStateLocally(States.NIdle);
                 }
                 
                 break;
             }
 
-            case (int)States.Idle:
+            case (int)States.NIdle:
             {
                 break;
             }
+
+            case (int)States.TIdle:
+            {
+                CheckIfPlayerInLosAndTarget();
+                
+                break;
+            }
+
+            case (int)States.InvestigatingTargetPosition:
+            {
+                if (CheckIfPlayerInLosAndTarget()) break;
+
+                if (Vector3.Distance(transform.position, _targetPosition) <= 1)
+                {
+                    SwitchBehaviourStateLocally(States.SearchingForPlayers);
+                }
+                
+                break;
+            }
+
+            case (int)States.SearchingForPlayers:
+            {
+                CheckIfPlayerInLosAndTarget();
+                
+                break;
+            }
+
+            case (int)States.Attacking:
+            {
+                // Check for players in LOS
+                PlayerControllerB[] playersInLineOfSight = GetAllPlayersInLineOfSight(viewWidth, viewRange, eye, proximityAwareness,
+                    layerMask: StartOfRound.Instance.collidersAndRoomMaskAndDefault);
+                
+                // Check if our target is in LOS
+                bool ourTargetFound = false;
+                if (playersInLineOfSight is { Length: > 0 })
+                {
+                    ourTargetFound = targetPlayer != null && playersInLineOfSight.Any(playerControllerB => playerControllerB == targetPlayer && playerControllerB != null);
+                }
+                // If no players were found, switch to investigation state
+                else
+                {
+                    SwitchBehaviourStateLocally((int)States.InvestigatingTargetPosition);
+                    break;
+                }
+                
+                // If our target wasn't found, switch target to the closest player in los
+                if (!ourTargetFound)
+                {
+                    PlayerControllerB playerInLos =
+                        CheckLineOfSightForClosestPlayer(viewWidth, viewRange, proximityAwareness);
+                    if (playerInLos == null)
+                    {
+                        SwitchBehaviourStateLocally(States.InvestigatingTargetPosition);
+                        break;
+                    }
+                    
+                    ChangeTargetPlayer(playerInLos);
+                    SetMovingTowardsTargetPlayer(playerInLos);
+                }
+
+                _targetPosition = targetPlayer.transform.position;
+                // todo: if target player is close enough and can see the sheep, increase their fear
+                
+                // todo: make attack animation stuff
+                
+                break;
+            }
         }
+    }
+
+    private bool CheckIfPlayerInLosAndTarget()
+    {
+        PlayerControllerB seenPlayer = CheckLineOfSightForClosestPlayer(viewWidth, viewRange, proximityAwareness);
+        if (seenPlayer != null)
+        {
+            ChangeTargetPlayer(seenPlayer);
+            switch (currentBehaviourStateIndex)
+            {
+                case (int)States.TIdle or (int)States.InvestigatingTargetPosition or (int)States.SearchingForPlayers:
+                {
+                    SwitchBehaviourStateLocally(States.Attacking);
+                    break;
+                }
+            }
+        }
+        else
+        {
+            if (currentBehaviourStateIndex == (int)States.Attacking) SwitchBehaviourStateLocally(States.InvestigatingTargetPosition);
+        }
+
+        return seenPlayer != null;
     }
 
     private void HandleCompleteTransformation(string receivedRedSheepId)
@@ -134,14 +231,14 @@ public class TheRedSheepServer : EnemyAI
         if (_redSheepId != receivedRedSheepId) return;
 
         eye = transformedRedSheepEye;
-        SwitchBehaviourStateLocally(States.Roaming);
+        SwitchBehaviourStateLocally(States.SearchingForPlayers);
     }
 
     private void HandleIdleCycleComplete(string receivedRedSheepId)
     {
         if (_redSheepId != receivedRedSheepId) return;
         if (!IsServer) return;
-        if (currentBehaviourStateIndex != (int)States.Idle) return;
+        if (currentBehaviourStateIndex != (int)States.NIdle) return;
 
         _idleStateCyclesLeft--;
         LogDebug($"There are now {_idleStateCyclesLeft} idle state cycles left");
@@ -149,12 +246,12 @@ public class TheRedSheepServer : EnemyAI
         {
             switch (currentBehaviourStateIndex)
             {
-                case (int)States.Idle:
+                case (int)States.NIdle:
                     SwitchBehaviourStateLocally(States.Roaming);
                     break;
                 
-                case (int)States.TransformedIdle:
-                    SwitchBehaviourStateLocally(States.TransformedIdle);
+                case (int)States.TIdle:
+                    SwitchBehaviourStateLocally(States.SearchingForPlayers);
                     break;
             }
         }
@@ -197,7 +294,15 @@ public class TheRedSheepServer : EnemyAI
         }
         
         LogDebug($"Playing animation with id: ({animationToPlay}, {animationIdToPlay})");
-        netcodeController.DoAnimationClientRpc(_redSheepId, animationIdToPlay); ;
+        netcodeController.DoAnimationClientRpc(_redSheepId, animationIdToPlay);
+    }
+    
+    public override void FinishedCurrentSearchRoutine()
+    {
+        base.FinishedCurrentSearchRoutine();
+        if (!IsServer) return;
+        if (searchForPlayers.inProgress)
+            searchForPlayers.searchWidth = Mathf.Clamp(searchForPlayers.searchWidth + 10f, 1f, maxSearchRadius);
     }
 
     public override void HitEnemy(int force = 1, PlayerControllerB playerWhoHit = null, bool playHitSFX = false,
@@ -208,14 +313,24 @@ public class TheRedSheepServer : EnemyAI
         if (isEnemyDead || currentBehaviourStateIndex == (int)States.Dead) return;
         if (_takeDamageCooldown > 0) return;
 
-        enemyHP -= force;
+        //enemyHP -= force;
         _takeDamageCooldown = 0.05f;
         ChangeTargetPlayer(playerWhoHit);
         if (enemyHP > 0)
         {
-            if (currentBehaviourStateIndex is (int)States.Roaming or (int)States.Idle)
+            switch (currentBehaviourStateIndex)
             {
-                SwitchBehaviourStateLocally(States.Transforming);
+                case (int)States.Roaming or (int)States.NIdle:
+                {
+                    SwitchBehaviourStateLocally(States.Transforming);
+                    break;
+                }
+
+                case (int)States.TIdle or (int)States.SearchingForPlayers:
+                {
+                    SwitchBehaviourStateLocally(States.Attacking);
+                    break;
+                }
             }
         }
         else
@@ -256,14 +371,14 @@ public class TheRedSheepServer : EnemyAI
                 break;
             }
 
-            case (int)States.Idle:
+            case (int)States.NIdle:
             {
                 _agentMaxAcceleration = 10f;
                 _agentMaxSpeed = 0f;
                 agent.speed = 0f;
                 agent.acceleration = 0f;
                 moveTowardsDestination = false;
-                _idleStateCyclesLeft = Random.Range(1, 6);
+                _idleStateCyclesLeft = Random.Range(1, 4);
                 
                 netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, false);
                 PickRandomIdleAnimation();
@@ -278,7 +393,59 @@ public class TheRedSheepServer : EnemyAI
                 agent.acceleration = 0f;
                 moveTowardsDestination = false;
 
-                netcodeController.PlayTransformationAnimationVfxClientRpc(_redSheepId);
+                netcodeController.DoAnimationClientRpc(_redSheepId, TheRedSheepClient.StartTransformation);
+                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, false);
+                
+                break;
+            }
+
+            case (int)States.TIdle:
+            {
+                _agentMaxAcceleration = 10f;
+                _agentMaxSpeed = 0f;
+                agent.speed = 0f;
+                agent.acceleration = 0f;
+                moveTowardsDestination = false;
+                _idleStateCyclesLeft = Random.Range(1, 2);
+                
+                if (searchForPlayers.inProgress) StopSearch(searchForPlayers);
+                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, false);
+                PickRandomIdleAnimation();
+                
+                break;
+            }
+
+            case (int)States.SearchingForPlayers:
+            {
+                _agentMaxSpeed = 3.5f; // TODO: Make configurable
+                _agentMaxAcceleration = 10f; // TODO: Make configurable
+
+                Vector3 startSearchPosition = _targetPosition != default && _targetPosition != Vector3.zero ? _targetPosition : transform.position;
+                StartSearch(startSearchPosition, searchForPlayers);
+                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, true);
+                
+                break;
+            }
+
+            case (int)States.InvestigatingTargetPosition:
+            {
+                _agentMaxSpeed = 4f;
+                _agentMaxAcceleration = 15f;
+                
+                if (searchForPlayers.inProgress) StopSearch(searchForPlayers);
+                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, true);
+                
+                break;
+            }
+
+            case (int)States.Attacking:
+            {
+                _agentMaxSpeed = 4.5f;
+                _agentMaxAcceleration = 20f;
+                
+                if (searchForPlayers.inProgress) StopSearch(searchForPlayers);
+                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, false);
+                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsRunning, true);
                 
                 break;
             }
