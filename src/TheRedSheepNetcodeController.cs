@@ -10,10 +10,6 @@ namespace LethalCompanyTheRedSheep;
 public class TheRedSheepNetcodeController : NetworkBehaviour
 {
     private ManualLogSource _mls;
-    
-#pragma warning disable 0649
-    [SerializeField] private Animator animator;
-#pragma warning restore 0649
     public event Action<string> OnInitializeConfigValues;
     public event Action<string> OnSyncRedSheepIdentifier;
     public event Action<string, ulong> OnChangeTargetPlayer;
@@ -22,32 +18,21 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
     public event Action<string, int> OnDoAnimation;
     public event Action<string, int, bool> OnChangeAnimationParameterBool;
     public event Action<string> OnIdleCycleComplete;
+    public event Action<string> OnStartTransformation;
     public event Action<string> OnCompleteTransformation;
     
-    private void Start()
+    private void Awake()
     {
         _mls = Logger.CreateLogSource(
             $"{TheRedSheepPlugin.ModGuid} | The Red Sheep Netcode Controller");
     }
 
-    private void Awake()
+    [ClientRpc]
+    public void StartTransformationClientRpc(string receivedRedSheepId)
     {
-        AddStateMachineBehaviours();
+        OnStartTransformation?.Invoke(receivedRedSheepId);
     }
-
-    private void AddStateMachineBehaviours()
-    {
-        StateMachineBehaviour[] behaviours = animator.GetBehaviours<StateMachineBehaviour>();
-        TheRedSheepClient sheepClient = GetComponent<TheRedSheepClient>();
-        foreach (StateMachineBehaviour behaviour in behaviours)
-        {
-            if (behaviour is BaseStateMachineBehaviour baseStateMachineBehaviour)
-            {
-                baseStateMachineBehaviour.Initialize(this, sheepClient);
-            }
-        }
-    }
-
+    
     [ServerRpc]
     public void CompleteTransformationServerRpc(string receivedRedSheepId)
     {

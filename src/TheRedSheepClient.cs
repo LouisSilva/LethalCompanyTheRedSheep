@@ -2,6 +2,7 @@
 using System.Collections;
 using BepInEx.Logging;
 using GameNetcodeStuff;
+using LethalCompanyTheRedSheep.CustomStateMachineBehaviours;
 using Unity.Netcode;
 using Logger = BepInEx.Logging.Logger;
 using UnityEngine;
@@ -32,9 +33,12 @@ public class TheRedSheepClient : MonoBehaviour
     [SerializeField] private AudioSource creatureVoice;
     
     [Header("Controllers")] [Space(5f)]
-    [SerializeField] private Animator animator;
+    [SerializeField] private Animator normalAnimator;
+    [SerializeField] private Animator transformedAnimator;
     [SerializeField] private TheRedSheepNetcodeController netcodeController;
 #pragma warning restore 0649
+
+    private Animator _currentAnimator;
 
     private PlayerControllerB _targetPlayer;
 
@@ -54,6 +58,7 @@ public class TheRedSheepClient : MonoBehaviour
         netcodeController.OnEnterDeathState += HandleEnterDeathState;
         netcodeController.OnChangeAnimationParameterBool += SetBool;
         netcodeController.OnDoAnimation += SetTrigger;
+        netcodeController.OnStartTransformation += HandleStartTransformation;
     }
 
     private void OnDisable()
@@ -65,6 +70,7 @@ public class TheRedSheepClient : MonoBehaviour
         netcodeController.OnEnterDeathState -= HandleEnterDeathState;
         netcodeController.OnChangeAnimationParameterBool -= SetBool;
         netcodeController.OnDoAnimation -= SetTrigger;
+        netcodeController.OnStartTransformation -= HandleStartTransformation;
     }
 
     private void Start()
@@ -76,6 +82,10 @@ public class TheRedSheepClient : MonoBehaviour
         transformedRedSheepModel.gameObject.SetActive(false);
 
         creatureVoice.gameObject.transform.position = new Vector3(1.538f, 2.446f, 0.067f);
+
+        _currentAnimator = normalAnimator;
+        AddStateMachineBehaviours(normalAnimator);
+        AddStateMachineBehaviours(transformedAnimator);
     }
 
     private void FixedUpdate()
@@ -88,28 +98,45 @@ public class TheRedSheepClient : MonoBehaviour
         }
     }
 
-    public void OnAnimationEventStartTransformationProcedure()
+    public void HandleStartTransformation(string receivedRedSheepId)
     {
+        if (_redSheepId != receivedRedSheepId) return;
         StartCoroutine(TransformationProcedure()); 
-    }
-
-    public void OnAnimationEventStopSmoke()
-    {
-        
     }
 
     private IEnumerator TransformationProcedure()
     {
-        yield return new WaitForSeconds(0.2f);
-        // Todo: add smoke
-        yield return new WaitForSeconds(0.5f);
-        if (NetworkManager.Singleton.IsServer && netcodeController.IsOwner) netcodeController.CompleteTransformationServerRpc(_redSheepId);
+        LogDebug("In TransformationProcedure");
+        const float startAnimationDuration = 2.2f;
+        const float endAnimationDuration = 3.2f;
+        
+        SetTrigger(_redSheepId, StartTransformation);
+        SetBool(_redSheepId, IsWalking, false);
+        yield return new WaitForSeconds(startAnimationDuration + 0.2f);
+        
+        // Todo: add smoke effect and thing that pushes players + enemies back if they are close
         
         yield return new WaitForSeconds(0.5f);
         Destroy(normalRedSheepModel.gameObject);
-        transformedRedSheepModel.SetActive(true);
+        transformedRedSheepModel.gameObject.SetActive(true);
         creatureVoice.gameObject.transform.position = new Vector3(0.784f, 2.802f, -0.024f);
+        _currentAnimator = transformedAnimator;
         SetTrigger(_redSheepId, EndTransformation);
+
+        yield return new WaitForSeconds(endAnimationDuration);
+        if (NetworkManager.Singleton.IsServer && netcodeController.IsOwner) netcodeController.CompleteTransformationServerRpc(_redSheepId);
+    }
+    
+    private void AddStateMachineBehaviours(Animator animator)
+    {
+        StateMachineBehaviour[] behaviours = animator.GetBehaviours<StateMachineBehaviour>();
+        foreach (StateMachineBehaviour behaviour in behaviours)
+        {
+            if (behaviour is BaseStateMachineBehaviour baseStateMachineBehaviour)
+            {
+                baseStateMachineBehaviour.Initialize(netcodeController, this);
+            }
+        }
     }
 
     /// <summary>
@@ -149,19 +176,19 @@ public class TheRedSheepClient : MonoBehaviour
     private void SetBool(string receivedRedSheepId, int animationParameter, bool value)
     {
         if (_redSheepId != receivedRedSheepId) return;
-        animator.SetBool(animationParameter, value);
+        _currentAnimator.SetBool(animationParameter, value);
     }
 
     private void SetTrigger(string receivedRedSheepId, int animationParameter)
     {
         if (_redSheepId != receivedRedSheepId) return;
-        animator.SetTrigger(animationParameter);
+        _currentAnimator.SetTrigger(animationParameter);
     }
 
     private void SetFloat(string receivedRedSheepId, int animationParameter, float value)
     {
         if (_redSheepId != receivedRedSheepId) return;
-        animator.SetFloat(animationParameter, value);
+        _currentAnimator.SetFloat(animationParameter, value);
     }
     
     private void HandleSyncRedSheepIdentifier(string receivedRedSheepId)

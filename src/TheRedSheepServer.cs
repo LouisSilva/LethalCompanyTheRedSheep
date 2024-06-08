@@ -31,6 +31,8 @@ public class TheRedSheepServer : EnemyAI
     
 #pragma warning disable 0649
     [Header("Controllers")] [Space(5f)] 
+    [SerializeField] private Animator normalAnimator;
+    [SerializeField] private Animator transformedAnimator;
     [SerializeField] private Transform transformedRedSheepEye;
     [SerializeField] private TheRedSheepNetcodeController netcodeController;
 #pragma warning restore 0649
@@ -73,7 +75,8 @@ public class TheRedSheepServer : EnemyAI
         // Initialize the random function and config values
         Random.InitState(StartOfRound.Instance.randomMapSeed + _redSheepId.GetHashCode());
         InitializeConfigValues();
-        
+
+        creatureAnimator = normalAnimator;
         netcodeController.SyncRedSheepIdClientRpc(_redSheepId);
         InitializeState((int)States.Roaming);
         LogDebug("Red sheep spawned");
@@ -88,7 +91,6 @@ public class TheRedSheepServer : EnemyAI
         if (!IsServer) return;
 
         _takeDamageCooldown -= Time.deltaTime;
-        CalculateAgentSpeed();
 
         switch (currentBehaviourStateIndex)
         {
@@ -101,7 +103,15 @@ public class TheRedSheepServer : EnemyAI
             {
                 break;
             }
+
+            case (int)States.Transforming:
+            {
+                agent.speed = 0f;
+                break;
+            }
         }
+        
+        CalculateAgentSpeed();
     }
 
     /// <summary>
@@ -231,6 +241,7 @@ public class TheRedSheepServer : EnemyAI
         if (_redSheepId != receivedRedSheepId) return;
 
         eye = transformedRedSheepEye;
+        creatureAnimator = transformedAnimator;
         SwitchBehaviourStateLocally(States.SearchingForPlayers);
     }
 
@@ -390,11 +401,11 @@ public class TheRedSheepServer : EnemyAI
             {
                 _agentMaxAcceleration = 0f;
                 _agentMaxSpeed = 0f;
+                agent.speed = 0f;
                 agent.acceleration = 0f;
                 moveTowardsDestination = false;
 
-                netcodeController.DoAnimationClientRpc(_redSheepId, TheRedSheepClient.StartTransformation);
-                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, false);
+                netcodeController.StartTransformationClientRpc(_redSheepId);
                 
                 break;
             }
@@ -482,7 +493,7 @@ public class TheRedSheepServer : EnemyAI
     private void CalculateAgentSpeed()
     {
         if (!IsServer) return;
-        if (stunNormalizedTimer > 0)
+        if (stunNormalizedTimer > 0 || currentBehaviourStateIndex == (int)States.Transforming)
         {
             agent.speed = 0;
             agent.acceleration = _agentMaxAcceleration;
