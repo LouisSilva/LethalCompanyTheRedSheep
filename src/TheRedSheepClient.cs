@@ -6,7 +6,6 @@ using LethalCompanyTheRedSheep.CustomStateMachineBehaviours;
 using Unity.Netcode;
 using Logger = BepInEx.Logging.Logger;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 namespace LethalCompanyTheRedSheep;
 
@@ -23,11 +22,13 @@ public class TheRedSheepClient : MonoBehaviour
     public static readonly int Idle2 = Animator.StringToHash("Idle2");
     public static readonly int Idle3 = Animator.StringToHash("Idle3");
     public static readonly int WalkSpeed = Animator.StringToHash("WalkSpeed");
+    public static readonly int RunSpeed = Animator.StringToHash("RunSpeed");
     
 #pragma warning disable 0649
     [Header("Models")] [Space(5f)]
     [SerializeField] private GameObject normalRedSheepModel;
     [SerializeField] private GameObject transformedRedSheepModel;
+    [SerializeField] private GameObject transformedRedSheepEye;
 
     [Header("Audio Sources")] [Space(5f)] 
     [SerializeField] private AudioSource creatureVoice;
@@ -37,6 +38,9 @@ public class TheRedSheepClient : MonoBehaviour
     [SerializeField] private Animator transformedAnimator;
     [SerializeField] private TheRedSheepNetcodeController netcodeController;
 #pragma warning restore 0649
+    
+    [SerializeField] private float walkSpeedThreshold = 4.0f;
+    [SerializeField] private float maxWalkAnimationSpeedMultiplier = 1.25f;
 
     private Animator _currentAnimator;
 
@@ -59,6 +63,7 @@ public class TheRedSheepClient : MonoBehaviour
         netcodeController.OnChangeAnimationParameterBool += SetBool;
         netcodeController.OnDoAnimation += SetTrigger;
         netcodeController.OnStartTransformation += HandleStartTransformation;
+        netcodeController.OnIncreaseTargetPlayerFearLevel += HandleIncreaseTargetPlayerFearLevel;
     }
 
     private void OnDisable()
@@ -71,6 +76,7 @@ public class TheRedSheepClient : MonoBehaviour
         netcodeController.OnChangeAnimationParameterBool -= SetBool;
         netcodeController.OnDoAnimation -= SetTrigger;
         netcodeController.OnStartTransformation -= HandleStartTransformation;
+        netcodeController.OnIncreaseTargetPlayerFearLevel -= HandleIncreaseTargetPlayerFearLevel;
     }
 
     private void Start()
@@ -88,13 +94,54 @@ public class TheRedSheepClient : MonoBehaviour
         AddStateMachineBehaviours(transformedAnimator);
     }
 
-    private void FixedUpdate()
+    private void Update()
     {
-        if (_currentBehaviourStateIndex is (int)TheRedSheepServer.States.NIdle)
+        Vector3 position = transform.position;
+        _agentCurrentSpeed = Mathf.Lerp(_agentCurrentSpeed, (position - _agentLastPosition).magnitude / Time.deltaTime, 0.75f);
+        _agentLastPosition = position;
+        
+        switch (_currentBehaviourStateIndex)
         {
-            Vector3 position = transform.position;
-            _agentCurrentSpeed = Mathf.Lerp(_agentCurrentSpeed, (position - _agentLastPosition).magnitude / Time.deltaTime, 0.75f);
-            _agentLastPosition = position;
+            case (int)TheRedSheepServer.States.SearchingForPlayers
+                or (int)TheRedSheepServer.States.InvestigatingTargetPosition or (int)TheRedSheepServer.States.Attacking:
+            {
+                if (_agentCurrentSpeed <= walkSpeedThreshold && _agentCurrentSpeed > 0)
+                {
+                    SetBool(_redSheepId, IsWalking, true);
+                    SetBool(_redSheepId, IsRunning, false);
+
+                    float walkSpeedMultiplier = Mathf.Clamp(_agentCurrentSpeed / walkSpeedThreshold, 0,
+                        maxWalkAnimationSpeedMultiplier);
+                    SetFloat(_redSheepId, WalkSpeed, walkSpeedMultiplier);
+                }
+                else if (_agentCurrentSpeed > walkSpeedThreshold)
+                {
+                    SetBool(_redSheepId, IsRunning, true);
+
+                    float runSpeedMultiplier = Mathf.Clamp(_agentCurrentSpeed / 4f, 0, 5);
+                    SetFloat(_redSheepId, RunSpeed, runSpeedMultiplier);
+                }
+                else
+                {
+                    SetBool(_redSheepId, IsWalking, false);
+                    SetBool(_redSheepId, IsRunning, false);
+                }
+                
+                break;
+            }
+
+            case (int)TheRedSheepServer.States.Roaming:
+            {
+                if (_agentCurrentSpeed > 0)
+                {
+                    SetBool(_redSheepId, IsWalking, true);
+
+                    float walkSpeedMultiplier = Mathf.Clamp(_agentCurrentSpeed / 1.5f, 0, 5);
+                    SetFloat(_redSheepId, WalkSpeed, walkSpeedMultiplier);
+                }
+                
+                break;
+            }
         }
     }
 
@@ -138,6 +185,29 @@ public class TheRedSheepClient : MonoBehaviour
             }
         }
     }
+    
+    private void HandleIncreaseTargetPlayerFearLevel(string receivedRedSheepId)
+    {
+        if (_redSheepId != receivedRedSheepId) return;
+        if (GameNetworkManager.Instance.localPlayerController != _targetPlayer) return;
+        
+        if (_targetPlayer == null)
+        {
+            return;
+        }
+        
+        if (_targetPlayer.HasLineOfSightToPosition(transformedRedSheepEye.transform.position, 115f, 50, 3f))
+        {
+            _targetPlayer.JumpToFearLevel(1);
+            _targetPlayer.IncreaseFearLevelOverTime(0.8f);
+        }
+        
+        else if (Vector3.Distance(transformedRedSheepEye.transform.position, _targetPlayer.transform.position) < 3)
+        {
+            _targetPlayer.JumpToFearLevel(0.6f);
+            _targetPlayer.IncreaseFearLevelOverTime(0.4f);
+        }
+    }
 
     /// <summary>
     /// Changes the target player to the player with the given playerObjectId.
@@ -155,6 +225,7 @@ public class TheRedSheepClient : MonoBehaviour
         
         PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[targetPlayerObjectId];
         _targetPlayer = player;
+        LogDebug($"New target player is: {_targetPlayer.playerUsername}");
     }
     
     /// <summary>

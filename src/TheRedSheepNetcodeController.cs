@@ -20,11 +20,18 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
     public event Action<string> OnIdleCycleComplete;
     public event Action<string> OnStartTransformation;
     public event Action<string> OnCompleteTransformation;
+    public event Action<string> OnIncreaseTargetPlayerFearLevel;
     
     private void Awake()
     {
         _mls = Logger.CreateLogSource(
             $"{TheRedSheepPlugin.ModGuid} | The Red Sheep Netcode Controller");
+    }
+
+    [ClientRpc]
+    public void IncreaseTargetPlayerFearLevelClientRpc(string receivedRedSheepId)
+    {
+        OnIncreaseTargetPlayerFearLevel?.Invoke(receivedRedSheepId);
     }
 
     [ClientRpc]

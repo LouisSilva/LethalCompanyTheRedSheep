@@ -14,6 +14,23 @@ public class TheRedSheepServer : EnemyAI
 {
     private ManualLogSource _mls;
     private string _redSheepId;
+
+    private enum NoiseIDsToAnnoy
+    {
+        PlayersTalking = 75,
+        ShipHorn = 14155,
+        Boombox = 5,
+        RadarBoosterPing = 1015,
+        Jetpack = 41,
+    }
+
+    private enum NoiseIDsToIgnore
+    {
+        DoubleWing = 911,
+        Lightning = 11,
+        DocileLocustBees = 14152,
+        BaboonHawkCaw = 1105
+    }
     
     public enum States
     {
@@ -21,8 +38,8 @@ public class TheRedSheepServer : EnemyAI
         NIdle,
         Transforming,
         TIdle,
-        InvestigatingTargetPosition,
         SearchingForPlayers,
+        InvestigatingTargetPosition,
         Attacking,
         Dead
     }
@@ -38,16 +55,24 @@ public class TheRedSheepServer : EnemyAI
 #pragma warning restore 0649
     
     [SerializeField] private float maxSearchRadius = 100f;
-    [SerializeField] private float viewWidth = 135f;
+    [SerializeField] private float viewWidth = 115f;
     [SerializeField] private int viewRange = 150;
     [SerializeField] private int proximityAwareness = 3;
+    [SerializeField] private float annoyanceDecayRate = 0.3f;
+    [SerializeField] private float annoyanceThreshold = 8f;
+    [SerializeField] private float noiseAnnoyanceMultiplier = 1f;
+    [SerializeField] private float proximityAnnoyanceMultiplier = 1f;
+    [SerializeField] private bool canHearPlayers = true;
+    [SerializeField] private float hearingPrecision = 90f;
 
     private Vector3 _targetPosition;
+    private Vector3 _positionWhenTransforming;
     
     private float _agentMaxAcceleration;
     private float _agentMaxSpeed;
     private float _takeDamageCooldown;
-    private float _transformedIdleTimer;
+    private float _hearNoiseCooldown;
+    private float _annoyanceLevel;
 
     private int _idleStateCyclesLeft;
 
@@ -78,6 +103,7 @@ public class TheRedSheepServer : EnemyAI
 
         creatureAnimator = normalAnimator;
         netcodeController.SyncRedSheepIdClientRpc(_redSheepId);
+        allAINodes = GameObject.FindGameObjectsWithTag("OutsideAINode");
         InitializeState((int)States.Roaming);
         LogDebug("Red sheep spawned");
     }
@@ -91,22 +117,28 @@ public class TheRedSheepServer : EnemyAI
         if (!IsServer) return;
 
         _takeDamageCooldown -= Time.deltaTime;
+        _hearNoiseCooldown -= Time.deltaTime;
 
         switch (currentBehaviourStateIndex)
         {
             case (int)States.Roaming:
             {
+                if (DetermineAnnoyanceLevel()) break;
+                
                 break;
             }
 
             case (int)States.NIdle:
             {
+                if (DetermineAnnoyanceLevel()) break;
+                
                 break;
             }
 
             case (int)States.Transforming:
             {
                 agent.speed = 0f;
+                transform.position = _positionWhenTransforming;
                 break;
             }
         }
@@ -143,6 +175,11 @@ public class TheRedSheepServer : EnemyAI
                 break;
             }
 
+            case (int)States.Transforming:
+            {
+                break;
+            }
+
             case (int)States.TIdle:
             {
                 CheckIfPlayerInLosAndTarget();
@@ -152,7 +189,11 @@ public class TheRedSheepServer : EnemyAI
 
             case (int)States.InvestigatingTargetPosition:
             {
-                if (CheckIfPlayerInLosAndTarget()) break;
+                if (CheckIfPlayerInLosAndTarget())
+                {
+                    SwitchBehaviourStateLocally(States.Attacking);
+                    break;
+                }
 
                 if (Vector3.Distance(transform.position, _targetPosition) <= 1)
                 {
@@ -202,15 +243,34 @@ public class TheRedSheepServer : EnemyAI
                     ChangeTargetPlayer(playerInLos);
                     SetMovingTowardsTargetPlayer(playerInLos);
                 }
+                else
+                {
+                    SetMovingTowardsTargetPlayer(targetPlayer);
+                }
 
                 _targetPosition = targetPlayer.transform.position;
-                // todo: if target player is close enough and can see the sheep, increase their fear
+                netcodeController.IncreaseTargetPlayerFearLevelClientRpc(_redSheepId);
                 
+                // todo: if target player is close enough and can see the sheep, increase their fear
                 // todo: make attack animation stuff
                 
                 break;
             }
         }
+    }
+    
+    private bool DetermineAnnoyanceLevel()
+    {
+        if (_annoyanceLevel > 0)
+        {
+            _annoyanceLevel -= annoyanceDecayRate * Time.deltaTime;
+            _annoyanceLevel = Mathf.Clamp(_annoyanceLevel, 0, Mathf.Infinity);
+        }
+
+        if (!(_annoyanceLevel >= annoyanceThreshold)) return false;
+        SwitchBehaviourStateLocally(States.Transforming);
+        return true;
+
     }
 
     private bool CheckIfPlayerInLosAndTarget()
@@ -316,6 +376,64 @@ public class TheRedSheepServer : EnemyAI
             searchForPlayers.searchWidth = Mathf.Clamp(searchForPlayers.searchWidth + 10f, 1f, maxSearchRadius);
     }
 
+    public override void DetectNoise(
+        Vector3 noisePosition,
+        float noiseLoudness,
+        int timesNoisePlayedInOneSpot = 0,
+        int noiseID = 0)
+    {
+        base.DetectNoise(noisePosition, noiseLoudness, timesNoisePlayedInOneSpot, noiseID);
+        if (!IsServer) return;
+        if (!canHearPlayers) return;
+        if ((double)stunNormalizedTimer > 0 || _hearNoiseCooldown > 0.0 || Enum.IsDefined(typeof(NoiseIDsToIgnore), noiseID)) return;
+        
+        switch (currentBehaviourStateIndex)
+        {
+            case (int)States.NIdle or (int)States.Roaming:
+            {
+                _hearNoiseCooldown = 0.01f;
+                float distanceToNoise = Vector3.Distance(transform.position, noisePosition);
+                float noiseThreshold = 15f * noiseLoudness;
+                LogDebug($"Heard noise from {distanceToNoise} meters away | Noise loudness: {noiseLoudness}");
+
+                if (Physics.Linecast(transform.position, noisePosition, 256))
+                {
+                    noiseLoudness /= 1.5f;
+                    noiseThreshold /= 1.5f;
+                }
+                
+                if (noiseLoudness < 0.25f || distanceToNoise >= noiseThreshold) return;
+                if (Enum.IsDefined(typeof(NoiseIDsToAnnoy), noiseID)) noiseLoudness *= 1.5f;
+
+                _annoyanceLevel += noiseLoudness * noiseAnnoyanceMultiplier;
+                LogDebug($"Annoyance level: {_annoyanceLevel}");
+                break;
+            }
+
+            case (int)States.SearchingForPlayers:
+            {
+                if (timesNoisePlayedInOneSpot > 10) return;
+                _hearNoiseCooldown = 0.1f;
+                float distanceToNoise = Vector3.Distance(transform.position, noisePosition);
+                float noiseThreshold = 8f * noiseLoudness;
+                LogDebug($"Heard noise from {distanceToNoise} meters away | Noise loudness: {noiseLoudness}");
+                
+                if (Physics.Linecast(transform.position, noisePosition, 256))
+                {
+                    noiseLoudness /= 2f;
+                    noiseThreshold /= 2f;
+                }
+
+                if (noiseLoudness < 0.25 || distanceToNoise >= noiseThreshold) return;
+
+                float adjustedRadius = Mathf.Clamp(distanceToNoise * (1f - hearingPrecision / 100f), 0.01f, 50f);
+                _targetPosition = RoundManager.Instance.GetRandomNavMeshPositionInRadius(noisePosition, adjustedRadius);
+                SwitchBehaviourStateLocally(States.InvestigatingTargetPosition);
+                break;
+            }
+        }
+    }
+
     public override void HitEnemy(int force = 1, PlayerControllerB playerWhoHit = null, bool playHitSFX = false,
         int hitId = -1)
     {
@@ -337,7 +455,7 @@ public class TheRedSheepServer : EnemyAI
                     break;
                 }
 
-                case (int)States.TIdle or (int)States.SearchingForPlayers:
+                case (int)States.TIdle or (int)States.SearchingForPlayers or (int)States.InvestigatingTargetPosition:
                 {
                     SwitchBehaviourStateLocally(States.Attacking);
                     break;
@@ -372,7 +490,7 @@ public class TheRedSheepServer : EnemyAI
         {
             case (int)States.Roaming:
             {
-                _agentMaxSpeed = 2f; // TODO: Make configurable
+                _agentMaxSpeed = 1.75f; // TODO: Make configurable
                 _agentMaxAcceleration = 10f; // TODO: Make configurable
                 
                 // Pick first node to go to
@@ -404,6 +522,7 @@ public class TheRedSheepServer : EnemyAI
                 agent.speed = 0f;
                 agent.acceleration = 0f;
                 moveTowardsDestination = false;
+                _positionWhenTransforming = transform.position;
 
                 netcodeController.StartTransformationClientRpc(_redSheepId);
                 
@@ -420,7 +539,6 @@ public class TheRedSheepServer : EnemyAI
                 _idleStateCyclesLeft = Random.Range(1, 2);
                 
                 if (searchForPlayers.inProgress) StopSearch(searchForPlayers);
-                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, false);
                 PickRandomIdleAnimation();
                 
                 break;
@@ -433,30 +551,50 @@ public class TheRedSheepServer : EnemyAI
 
                 Vector3 startSearchPosition = _targetPosition != default && _targetPosition != Vector3.zero ? _targetPosition : transform.position;
                 StartSearch(startSearchPosition, searchForPlayers);
-                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, true);
                 
                 break;
             }
 
             case (int)States.InvestigatingTargetPosition:
             {
-                _agentMaxSpeed = 4f;
+                _agentMaxSpeed = 6f;
                 _agentMaxAcceleration = 15f;
                 
                 if (searchForPlayers.inProgress) StopSearch(searchForPlayers);
-                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, true);
+                if (_targetPosition == default)
+                {
+                    SwitchBehaviourStateLocally((int)States.SearchingForPlayers);
+                    break;
+                }
+
+                if (!SetDestinationToPosition(_targetPosition, true))
+                {
+                    SwitchBehaviourStateLocally((int)States.SearchingForPlayers);
+                    break;
+                }
                 
                 break;
             }
 
             case (int)States.Attacking:
             {
-                _agentMaxSpeed = 4.5f;
+                _agentMaxSpeed = 8f;
                 _agentMaxAcceleration = 20f;
                 
                 if (searchForPlayers.inProgress) StopSearch(searchForPlayers);
-                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsWalking, false);
-                netcodeController.ChangeAnimationParameterBoolClientRpc(_redSheepId, TheRedSheepClient.IsRunning, true);
+                
+                break;
+            }
+
+            case (int)States.Dead:
+            {
+                _agentMaxSpeed = 0;
+                _agentMaxAcceleration = 0;
+                movingTowardsTargetPlayer = false;
+                agent.speed = 0;
+                agent.acceleration = 0;
+                agent.enabled = false;
+                isEnemyDead = true;
                 
                 break;
             }
