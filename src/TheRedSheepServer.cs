@@ -58,10 +58,11 @@ public class TheRedSheepServer : EnemyAI
     [SerializeField] private float viewWidth = 115f;
     [SerializeField] private int viewRange = 150;
     [SerializeField] private int proximityAwareness = 3;
-    [SerializeField] private float annoyanceDecayRate = 0.3f;
+    [SerializeField] private float annoyanceDecayRate = 0.2f;
     [SerializeField] private float annoyanceThreshold = 8f;
     [SerializeField] private float noiseAnnoyanceMultiplier = 1f;
-    [SerializeField] private float proximityAnnoyanceMultiplier = 1f;
+    [SerializeField] private float proximityAnnoyanceMultiplier = 0.5f;
+    [SerializeField] private float proximityAnnoyanceThreshold = 10f;
     [SerializeField] private bool canHearPlayers = true;
     [SerializeField] private float hearingPrecision = 90f;
 
@@ -123,15 +124,11 @@ public class TheRedSheepServer : EnemyAI
         {
             case (int)States.Roaming:
             {
-                if (DetermineAnnoyanceLevel()) break;
-                
                 break;
             }
 
             case (int)States.NIdle:
             {
-                if (DetermineAnnoyanceLevel()) break;
-                
                 break;
             }
 
@@ -160,6 +157,9 @@ public class TheRedSheepServer : EnemyAI
         {
             case (int)States.Roaming:
             {
+                CalculateProximityAnnoyance();
+                if (DetermineAnnoyanceLevel()) break;
+                
                 // Check if the sheep has reached its destination
                 if (Vector3.Distance(transform.position, _targetPosition) <= 3)
                 {
@@ -172,6 +172,9 @@ public class TheRedSheepServer : EnemyAI
 
             case (int)States.NIdle:
             {
+                CalculateProximityAnnoyance();
+                if (DetermineAnnoyanceLevel()) break;
+                
                 break;
             }
 
@@ -251,7 +254,6 @@ public class TheRedSheepServer : EnemyAI
                 _targetPosition = targetPlayer.transform.position;
                 netcodeController.IncreaseTargetPlayerFearLevelClientRpc(_redSheepId);
                 
-                // todo: if target player is close enough and can see the sheep, increase their fear
                 // todo: make attack animation stuff
                 
                 break;
@@ -272,6 +274,36 @@ public class TheRedSheepServer : EnemyAI
         return true;
 
     }
+
+    private void CalculateProximityAnnoyance()
+    {
+        foreach (PlayerControllerB player in StartOfRound.Instance.allPlayerScripts)
+        {
+            if (!IsPlayerTargetable(player)) continue;
+
+            float distanceToSheep = Vector3.Distance(transform.position, player.transform.position);
+            if (distanceToSheep > proximityAnnoyanceThreshold) continue;
+
+            float proximityAnnoyance = proximityAnnoyanceMultiplier / distanceToSheep;
+            _annoyanceLevel += proximityAnnoyance;
+        }
+    }
+    
+    /// <summary>
+    /// Returns whether a player is targetable.
+    /// This method is a simplified version of Zeeker's function, it's a bit doo doo.
+    /// </summary>
+    /// <param name="player">The player to check whether they are targetable</param>
+    /// <returns>Whether the target player is targetable</returns>
+    private bool IsPlayerTargetable(PlayerControllerB player)
+    {
+        if (player == null) return false;
+        return !player.isPlayerDead &&
+               !player.isInsideFactory &&
+               player.isPlayerControlled &&
+               !(player.sinkingValue >= 0.7300000190734863);
+    }
+
 
     private bool CheckIfPlayerInLosAndTarget()
     {
