@@ -159,6 +159,12 @@ public class TheRedSheepServer : EnemyAI
             {
                 CalculateProximityAnnoyance();
                 if (DetermineAnnoyanceLevel()) break;
+
+                if (TimeOfDay.Instance.normalizedTimeOfDay >= 0.625)
+                {
+                    SwitchBehaviourStateLocally(States.Transforming);
+                    break;
+                }
                 
                 // Check if the sheep has reached its destination
                 if (Vector3.Distance(transform.position, _targetPosition) <= 3)
@@ -174,6 +180,12 @@ public class TheRedSheepServer : EnemyAI
             {
                 CalculateProximityAnnoyance();
                 if (DetermineAnnoyanceLevel()) break;
+                
+                if (TimeOfDay.Instance.normalizedTimeOfDay >= 0.625)
+                {
+                    SwitchBehaviourStateLocally(States.Transforming);
+                    break;
+                }
                 
                 break;
             }
@@ -295,7 +307,7 @@ public class TheRedSheepServer : EnemyAI
     /// </summary>
     /// <param name="player">The player to check whether they are targetable</param>
     /// <returns>Whether the target player is targetable</returns>
-    private bool IsPlayerTargetable(PlayerControllerB player)
+    private static bool IsPlayerTargetable(PlayerControllerB player)
     {
         if (player == null) return false;
         return !player.isPlayerDead &&

@@ -100,6 +100,8 @@ public class TheRedSheepClient : MonoBehaviour
         _agentCurrentSpeed = Mathf.Lerp(_agentCurrentSpeed, (position - _agentLastPosition).magnitude / Time.deltaTime, 0.75f);
         _agentLastPosition = position;
         
+        AdjustRotationToSlope();
+        
         switch (_currentBehaviourStateIndex)
         {
             case (int)TheRedSheepServer.States.SearchingForPlayers
@@ -145,7 +147,21 @@ public class TheRedSheepClient : MonoBehaviour
         }
     }
 
-    public void HandleStartTransformation(string receivedRedSheepId)
+    private void AdjustRotationToSlope()
+    {
+        const float rayLength = 1.5f;
+        const float rotationSpeed = 3f;
+
+        Vector3 rayOrigin = transform.position + Vector3.up * 0.5f;
+        if (!Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, rayLength)) return;
+        
+        Vector3 normal = hit.normal;
+        Vector3 forward = Vector3.Cross(transform.right, normal);
+        Quaternion slopeRotation = Quaternion.LookRotation(forward, normal);
+        transform.rotation = Quaternion.Slerp(transform.rotation, slopeRotation, Time.deltaTime * rotationSpeed);
+    }
+
+   private void HandleStartTransformation(string receivedRedSheepId)
     {
         if (_redSheepId != receivedRedSheepId) return;
         StartCoroutine(TransformationProcedure()); 
