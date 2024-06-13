@@ -43,10 +43,10 @@ public class TheRedSheepServer : EnemyAI
         Attacking,
         Dead
     }
-
-    [SerializeField] private AISearchRoutine searchForPlayers;
     
 #pragma warning disable 0649
+    [SerializeField] private AISearchRoutine searchForPlayers;
+    
     [Header("Controllers")] [Space(5f)] 
     [SerializeField] private Animator normalAnimator;
     [SerializeField] private Animator transformedAnimator;
@@ -56,12 +56,12 @@ public class TheRedSheepServer : EnemyAI
     
     [SerializeField] private float maxSearchRadius = 100f;
     [SerializeField] private float viewWidth = 115f;
-    [SerializeField] private int viewRange = 150;
+    [SerializeField] private int viewRange = 100;
     [SerializeField] private int proximityAwareness = 3;
-    [SerializeField] private float annoyanceDecayRate = 0.2f;
+    [SerializeField] private float annoyanceDecayRate = 0.35f;
     [SerializeField] private float annoyanceThreshold = 8f;
-    [SerializeField] private float noiseAnnoyanceMultiplier = 1f;
-    [SerializeField] private float proximityAnnoyanceMultiplier = 0.5f;
+    [SerializeField] private float noiseAnnoyanceMultiplier = 0.5f;
+    [SerializeField] private float proximityAnnoyanceMultiplier = 0.05f;
     [SerializeField] private float proximityAnnoyanceThreshold = 10f;
     [SerializeField] private bool canHearPlayers = true;
     [SerializeField] private float hearingPrecision = 90f;
@@ -74,6 +74,7 @@ public class TheRedSheepServer : EnemyAI
     private float _takeDamageCooldown;
     private float _hearNoiseCooldown;
     private float _annoyanceLevel;
+    private float _transformedIdleTimer;
 
     private int _idleStateCyclesLeft;
 
@@ -122,20 +123,17 @@ public class TheRedSheepServer : EnemyAI
 
         switch (currentBehaviourStateIndex)
         {
-            case (int)States.Roaming:
-            {
-                break;
-            }
-
-            case (int)States.NIdle:
-            {
-                break;
-            }
-
             case (int)States.Transforming:
             {
                 agent.speed = 0f;
                 transform.position = _positionWhenTransforming;
+                break;
+            }
+
+            case (int)States.SearchingForPlayers:
+            {
+                _transformedIdleTimer -= Time.deltaTime;
+                
                 break;
             }
         }
@@ -190,14 +188,22 @@ public class TheRedSheepServer : EnemyAI
                 break;
             }
 
-            case (int)States.Transforming:
-            {
-                break;
-            }
-
             case (int)States.TIdle:
             {
                 CheckIfPlayerInLosAndTarget();
+                
+                break;
+            }
+            
+            case (int)States.SearchingForPlayers:
+            {
+                if (CheckIfPlayerInLosAndTarget()) break;
+
+                if (_transformedIdleTimer <= 0)
+                {
+                    SwitchBehaviourStateLocally(States.TIdle);
+                    break;
+                }
                 
                 break;
             }
@@ -214,13 +220,6 @@ public class TheRedSheepServer : EnemyAI
                 {
                     SwitchBehaviourStateLocally(States.SearchingForPlayers);
                 }
-                
-                break;
-            }
-
-            case (int)States.SearchingForPlayers:
-            {
-                CheckIfPlayerInLosAndTarget();
                 
                 break;
             }
@@ -298,6 +297,7 @@ public class TheRedSheepServer : EnemyAI
 
             float proximityAnnoyance = proximityAnnoyanceMultiplier / distanceToSheep;
             _annoyanceLevel += proximityAnnoyance;
+            LogDebug($"{player.playerUsername} is {distanceToSheep} meters away, adding {proximityAnnoyance} annoyance. New annoyance level: {_annoyanceLevel}");
         }
     }
     
@@ -438,7 +438,7 @@ public class TheRedSheepServer : EnemyAI
                 _hearNoiseCooldown = 0.01f;
                 float distanceToNoise = Vector3.Distance(transform.position, noisePosition);
                 float noiseThreshold = 15f * noiseLoudness;
-                LogDebug($"Heard noise from {distanceToNoise} meters away | Noise loudness: {noiseLoudness}");
+                LogDebug($"Heard noise id {noiseID} from {distanceToNoise} meters away | Noise loudness: {noiseLoudness}");
 
                 if (Physics.Linecast(transform.position, noisePosition, 256))
                 {
@@ -446,10 +446,11 @@ public class TheRedSheepServer : EnemyAI
                     noiseThreshold /= 1.5f;
                 }
                 
-                if (noiseLoudness < 0.25f || distanceToNoise >= noiseThreshold) return;
+                if (noiseLoudness < 0.25f || distanceToNoise > noiseThreshold) return;
                 if (Enum.IsDefined(typeof(NoiseIDsToAnnoy), noiseID)) noiseLoudness *= 1.5f;
 
-                _annoyanceLevel += noiseLoudness * noiseAnnoyanceMultiplier;
+                float normalizedDistance = distanceToNoise / noiseThreshold;
+                _annoyanceLevel += noiseLoudness * normalizedDistance * noiseAnnoyanceMultiplier;
                 LogDebug($"Annoyance level: {_annoyanceLevel}");
                 break;
             }
@@ -581,6 +582,7 @@ public class TheRedSheepServer : EnemyAI
                 agent.acceleration = 0f;
                 moveTowardsDestination = false;
                 _idleStateCyclesLeft = Random.Range(1, 2);
+                _transformedIdleTimer = Random.Range(10f, 75f);
                 
                 if (searchForPlayers.inProgress) StopSearch(searchForPlayers);
                 PickRandomIdleAnimation();
@@ -624,6 +626,7 @@ public class TheRedSheepServer : EnemyAI
             {
                 _agentMaxSpeed = 8f;
                 _agentMaxAcceleration = 20f;
+                targetNode = targetPlayer.transform;
                 
                 if (searchForPlayers.inProgress) StopSearch(searchForPlayers);
                 
@@ -661,7 +664,7 @@ public class TheRedSheepServer : EnemyAI
     private void SwitchBehaviourStateLocally(int state)
     {
         if (!IsServer || currentBehaviourStateIndex == state) return;
-        LogDebug($"Switched to behaviour state {state}!");
+        LogDebug($"Switching to behaviour state {state}");
         previousBehaviourStateIndex = currentBehaviourStateIndex;
         currentBehaviourStateIndex = state;
         InitializeState(state);

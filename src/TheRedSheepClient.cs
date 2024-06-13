@@ -21,8 +21,27 @@ public class TheRedSheepClient : MonoBehaviour
     public static readonly int Idle1 = Animator.StringToHash("Idle1");
     public static readonly int Idle2 = Animator.StringToHash("Idle2");
     public static readonly int Idle3 = Animator.StringToHash("Idle3");
-    public static readonly int WalkSpeed = Animator.StringToHash("WalkSpeed");
-    public static readonly int RunSpeed = Animator.StringToHash("RunSpeed");
+    private static readonly int WalkSpeed = Animator.StringToHash("WalkSpeed");
+    private static readonly int RunSpeed = Animator.StringToHash("RunSpeed");
+    private static readonly int TransformationSmokeStartDuration = Animator.StringToHash("StartDuration");
+    private static readonly int TransformationSmokeStart = Animator.StringToHash("Start");
+    private static readonly int TransformationSmokeEndDuration = Animator.StringToHash("EndDuration");
+    private static readonly int TransformationSmokeEnd = Animator.StringToHash("End");
+
+    private enum DeadPlayerBodyParts
+    {
+        Neck = 0,
+        LowerRightArm = 1,
+        LowerLeftArm = 2,
+        RightShin = 3,
+        LeftShin = 4,
+        Torso = 5,
+        Root = 6,
+        RightThigh = 7,
+        LeftThigh = 8,
+        UpperLeftArm = 9,
+        UpperRightArm = 10,
+    }
     
 #pragma warning disable 0649
     [Header("Models")] [Space(5f)]
@@ -33,14 +52,19 @@ public class TheRedSheepClient : MonoBehaviour
     [Header("Audio Sources")] [Space(5f)] 
     [SerializeField] private AudioSource creatureVoice;
     
-    [Header("Controllers")] [Space(5f)]
+    [Header("Animators")] [Space(5f)]
     [SerializeField] private Animator normalAnimator;
     [SerializeField] private Animator transformedAnimator;
+    [SerializeField] private Animator fogAnimator;
+    
+    [Header("Controllers")] [Space(5f)]
     [SerializeField] private TheRedSheepNetcodeController netcodeController;
 #pragma warning restore 0649
     
     [SerializeField] private float walkSpeedThreshold = 4.0f;
     [SerializeField] private float maxWalkAnimationSpeedMultiplier = 1.25f;
+    [SerializeField] private float fogStartAnimationDuration = 1f;
+    [SerializeField] private float fogEndAnimationDuration = 1f;
 
     private Animator _currentAnimator;
 
@@ -51,7 +75,7 @@ public class TheRedSheepClient : MonoBehaviour
     private int _currentBehaviourStateIndex;
 
     private float _agentCurrentSpeed;
-    
+
 
     private void OnEnable()
     {
@@ -60,8 +84,8 @@ public class TheRedSheepClient : MonoBehaviour
         netcodeController.OnChangeBehaviourState += HandleChangeBehaviourStateIndex;
         netcodeController.OnChangeTargetPlayer += HandleChangeTargetPlayer;
         netcodeController.OnEnterDeathState += HandleEnterDeathState;
-        netcodeController.OnChangeAnimationParameterBool += SetBool;
-        netcodeController.OnDoAnimation += SetTrigger;
+        netcodeController.OnChangeAnimationParameterBool += HandleSetBool;
+        netcodeController.OnDoAnimation += HandleSetTrigger;
         netcodeController.OnStartTransformation += HandleStartTransformation;
         netcodeController.OnIncreaseTargetPlayerFearLevel += HandleIncreaseTargetPlayerFearLevel;
     }
@@ -73,8 +97,8 @@ public class TheRedSheepClient : MonoBehaviour
         netcodeController.OnChangeBehaviourState -= HandleChangeBehaviourStateIndex;
         netcodeController.OnChangeTargetPlayer -= HandleChangeTargetPlayer;
         netcodeController.OnEnterDeathState -= HandleEnterDeathState;
-        netcodeController.OnChangeAnimationParameterBool -= SetBool;
-        netcodeController.OnDoAnimation -= SetTrigger;
+        netcodeController.OnChangeAnimationParameterBool -= HandleSetBool;
+        netcodeController.OnDoAnimation -= HandleSetTrigger;
         netcodeController.OnStartTransformation -= HandleStartTransformation;
         netcodeController.OnIncreaseTargetPlayerFearLevel -= HandleIncreaseTargetPlayerFearLevel;
     }
@@ -109,24 +133,24 @@ public class TheRedSheepClient : MonoBehaviour
             {
                 if (_agentCurrentSpeed <= walkSpeedThreshold && _agentCurrentSpeed > 0)
                 {
-                    SetBool(_redSheepId, IsWalking, true);
-                    SetBool(_redSheepId, IsRunning, false);
+                    HandleSetBool(_redSheepId, IsWalking, true);
+                    HandleSetBool(_redSheepId, IsRunning, false);
 
                     float walkSpeedMultiplier = Mathf.Clamp(_agentCurrentSpeed / walkSpeedThreshold, 0,
                         maxWalkAnimationSpeedMultiplier);
-                    SetFloat(_redSheepId, WalkSpeed, walkSpeedMultiplier);
+                    HandleSetFloat(_redSheepId, WalkSpeed, walkSpeedMultiplier);
                 }
                 else if (_agentCurrentSpeed > walkSpeedThreshold)
                 {
-                    SetBool(_redSheepId, IsRunning, true);
+                    HandleSetBool(_redSheepId, IsRunning, true);
 
                     float runSpeedMultiplier = Mathf.Clamp(_agentCurrentSpeed / 4f, 0, 5);
-                    SetFloat(_redSheepId, RunSpeed, runSpeedMultiplier);
+                    HandleSetFloat(_redSheepId, RunSpeed, runSpeedMultiplier);
                 }
                 else
                 {
-                    SetBool(_redSheepId, IsWalking, false);
-                    SetBool(_redSheepId, IsRunning, false);
+                    HandleSetBool(_redSheepId, IsWalking, false);
+                    HandleSetBool(_redSheepId, IsRunning, false);
                 }
                 
                 break;
@@ -136,10 +160,10 @@ public class TheRedSheepClient : MonoBehaviour
             {
                 if (_agentCurrentSpeed > 0)
                 {
-                    SetBool(_redSheepId, IsWalking, true);
+                    HandleSetBool(_redSheepId, IsWalking, true);
 
                     float walkSpeedMultiplier = Mathf.Clamp(_agentCurrentSpeed / 1.5f, 0, 5);
-                    SetFloat(_redSheepId, WalkSpeed, walkSpeedMultiplier);
+                    HandleSetFloat(_redSheepId, WalkSpeed, walkSpeedMultiplier);
                 }
                 
                 break;
@@ -173,20 +197,24 @@ public class TheRedSheepClient : MonoBehaviour
         const float startAnimationDuration = 2.2f;
         const float endAnimationDuration = 3.2f;
         
-        SetTrigger(_redSheepId, StartTransformation);
-        SetBool(_redSheepId, IsWalking, false);
-        yield return new WaitForSeconds(startAnimationDuration + 0.2f);
+        HandleSetTrigger(_redSheepId, StartTransformation);
+        HandleSetBool(_redSheepId, IsWalking, false);
+        yield return new WaitForSeconds(startAnimationDuration);
         
-        // Todo: add smoke effect and thing that pushes players + enemies back if they are close
+        fogAnimator.SetFloat(TransformationSmokeStartDuration, fogStartAnimationDuration);
+        fogAnimator.SetTrigger(TransformationSmokeStart);
+        yield return new WaitForSeconds(fogStartAnimationDuration + 0.5f);
+        // Todo: make the smoke toxic after a slight delay (maybe use the tzp effect)
         
-        yield return new WaitForSeconds(0.5f);
         Destroy(normalRedSheepModel.gameObject);
         transformedRedSheepModel.gameObject.SetActive(true);
         creatureVoice.gameObject.transform.position = new Vector3(0.784f, 2.802f, -0.024f);
         _currentAnimator = transformedAnimator;
-        SetTrigger(_redSheepId, EndTransformation);
-
+        fogAnimator.SetFloat(TransformationSmokeEndDuration, fogEndAnimationDuration);
+        fogAnimator.SetTrigger(TransformationSmokeEnd);
+        HandleSetTrigger(_redSheepId, EndTransformation);
         yield return new WaitForSeconds(endAnimationDuration);
+        
         if (NetworkManager.Singleton.IsServer && netcodeController.IsOwner) netcodeController.CompleteTransformationServerRpc(_redSheepId);
     }
     
@@ -260,19 +288,19 @@ public class TheRedSheepClient : MonoBehaviour
         if (_redSheepId != receivedRedSheepId) return;
     }
 
-    private void SetBool(string receivedRedSheepId, int animationParameter, bool value)
+    private void HandleSetBool(string receivedRedSheepId, int animationParameter, bool value)
     {
         if (_redSheepId != receivedRedSheepId) return;
         _currentAnimator.SetBool(animationParameter, value);
     }
 
-    private void SetTrigger(string receivedRedSheepId, int animationParameter)
+    private void HandleSetTrigger(string receivedRedSheepId, int animationParameter)
     {
         if (_redSheepId != receivedRedSheepId) return;
         _currentAnimator.SetTrigger(animationParameter);
     }
 
-    private void SetFloat(string receivedRedSheepId, int animationParameter, float value)
+    private void HandleSetFloat(string receivedRedSheepId, int animationParameter, float value)
     {
         if (_redSheepId != receivedRedSheepId) return;
         _currentAnimator.SetFloat(animationParameter, value);
