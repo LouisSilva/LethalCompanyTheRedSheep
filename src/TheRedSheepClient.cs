@@ -6,6 +6,7 @@ using LethalCompanyTheRedSheep.CustomStateMachineBehaviours;
 using Unity.Netcode;
 using Logger = BepInEx.Logging.Logger;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace LethalCompanyTheRedSheep;
 
@@ -28,7 +29,7 @@ public class TheRedSheepClient : MonoBehaviour
     private static readonly int TransformationSmokeEndDuration = Animator.StringToHash("EndDuration");
     private static readonly int TransformationSmokeEnd = Animator.StringToHash("End");
 
-    private enum DeadPlayerBodyParts
+    public enum DeadPlayerBodyParts
     {
         Neck = 0,
         LowerRightArm = 1,
@@ -55,7 +56,8 @@ public class TheRedSheepClient : MonoBehaviour
     [Header("Animators")] [Space(5f)]
     [SerializeField] private Animator normalAnimator;
     [SerializeField] private Animator transformedAnimator;
-    [SerializeField] private Animator fogAnimator;
+    [SerializeField] private Animator transformationFogAnimator;
+    [SerializeField] private Animator greenFogAnimator;
     
     [Header("Controllers")] [Space(5f)]
     [SerializeField] private TheRedSheepNetcodeController netcodeController;
@@ -201,8 +203,8 @@ public class TheRedSheepClient : MonoBehaviour
         HandleSetBool(_redSheepId, IsWalking, false);
         yield return new WaitForSeconds(startAnimationDuration);
         
-        fogAnimator.SetFloat(TransformationSmokeStartDuration, fogStartAnimationDuration);
-        fogAnimator.SetTrigger(TransformationSmokeStart);
+        transformationFogAnimator.SetFloat(TransformationSmokeStartDuration, fogStartAnimationDuration);
+        transformationFogAnimator.SetTrigger(TransformationSmokeStart);
         yield return new WaitForSeconds(fogStartAnimationDuration + 0.5f);
         // Todo: make the smoke toxic after a slight delay (maybe use the tzp effect)
         
@@ -210,8 +212,8 @@ public class TheRedSheepClient : MonoBehaviour
         transformedRedSheepModel.gameObject.SetActive(true);
         creatureVoice.gameObject.transform.position = new Vector3(0.784f, 2.802f, -0.024f);
         _currentAnimator = transformedAnimator;
-        fogAnimator.SetFloat(TransformationSmokeEndDuration, fogEndAnimationDuration);
-        fogAnimator.SetTrigger(TransformationSmokeEnd);
+        transformationFogAnimator.SetFloat(TransformationSmokeEndDuration, fogEndAnimationDuration);
+        transformationFogAnimator.SetTrigger(TransformationSmokeEnd);
         HandleSetTrigger(_redSheepId, EndTransformation);
         yield return new WaitForSeconds(endAnimationDuration);
         
