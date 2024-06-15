@@ -169,6 +169,7 @@ public class TheRedSheepServer : EnemyAI
                 {
                     // Start to idle for a bit before going to a new place
                     SwitchBehaviourStateLocally(States.NIdle);
+                    break;
                 }
                 
                 break;

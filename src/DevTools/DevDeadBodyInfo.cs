@@ -17,11 +17,9 @@ public class DevDeadBodyInfo : MonoBehaviour
     public bool wasMatchingPosition;
     public Rigidbody previousAttachedLimb;
     public Vector3 previousBodyPosition;
-    public bool parentedToShip;
     public float resetBodyPartsTimer;
     public bool lerpBeforeMatchingPosition;
     public float moveToExactPositionTimer;
-    public bool isInShip;
     public bool deactivated;
     
     public void Start()
@@ -57,14 +55,8 @@ public class DevDeadBodyInfo : MonoBehaviour
                 attachedTo.parent == transform)
             {
                 moveToExactPositionTimer = 0.0f;
-                if (!wasMatchingPosition)
-                    return;
+                if (!wasMatchingPosition) return;
                 wasMatchingPosition = false;
-                if (StartOfRound.Instance.shipBounds.bounds.Contains(transform.position))
-                {
-                    transform.SetParent(StartOfRound.Instance.elevatorTransform);
-                    parentedToShip = true;
-                }
 
                 previousAttachedLimb.ResetCenterOfMass();
                 previousAttachedLimb.ResetInertiaTensor();
@@ -74,12 +66,6 @@ public class DevDeadBodyInfo : MonoBehaviour
             }
             else
             {
-                if (parentedToShip)
-                {
-                    parentedToShip = false;
-                    transform.SetParent(null, true);
-                }
-
                 if (matchPositionExactly)
                 {
                     if (lerpBeforeMatchingPosition && moveToExactPositionTimer < 0.30000001192092896)
@@ -194,7 +180,6 @@ public class DevDeadBodyInfo : MonoBehaviour
     {
         gameObject.SetActive(setActive);
         SetBodyPartsKinematic();
-        isInShip = false;
         deactivated = true;
     }
 

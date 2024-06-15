@@ -1,8 +1,6 @@
 ﻿using BepInEx.Logging;
 using System;
-using LethalCompanyTheRedSheep.CustomStateMachineBehaviours;
 using Unity.Netcode;
-using UnityEngine;
 using Logger = BepInEx.Logging.Logger;
 
 namespace LethalCompanyTheRedSheep;
