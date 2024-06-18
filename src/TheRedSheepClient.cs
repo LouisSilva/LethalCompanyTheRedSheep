@@ -16,6 +16,7 @@ public class TheRedSheepClient : MonoBehaviour
     private string _redSheepId;
 
     public static readonly int IsWalking = Animator.StringToHash("Walking");
+    public static readonly int ForceWalk = Animator.StringToHash("ForceWalk");
     public static readonly int IsRunning = Animator.StringToHash("Running");
     public static readonly int StartTransformation = Animator.StringToHash("Start Transformation");
     public static readonly int EndTransformation = Animator.StringToHash("End Transformation");
@@ -201,12 +202,11 @@ public class TheRedSheepClient : MonoBehaviour
         
         HandleSetTrigger(_redSheepId, StartTransformation);
         HandleSetBool(_redSheepId, IsWalking, false);
-        yield return new WaitForSeconds(startAnimationDuration);
+        yield return new WaitForSeconds(startAnimationDuration - 0.2f);
         
         transformationFogAnimator.SetFloat(TransformationSmokeStartDuration, fogStartAnimationDuration);
         transformationFogAnimator.SetTrigger(TransformationSmokeStart);
         yield return new WaitForSeconds(fogStartAnimationDuration + 0.5f);
-        // Todo: make the smoke toxic after a slight delay (maybe use the tzp effect)
         
         Destroy(normalRedSheepModel.gameObject);
         transformedRedSheepModel.gameObject.SetActive(true);
@@ -239,6 +239,7 @@ public class TheRedSheepClient : MonoBehaviour
         
         if (_targetPlayer == null)
         {
+            LogDebug("Tried to increase fear but target player is null");
             return;
         }
         

@@ -1,10 +1,11 @@
-﻿using BepInEx.Logging;
+﻿using System;
+using BepInEx.Logging;
 using UnityEngine;
 using Logger = BepInEx.Logging.Logger;
 
 namespace LethalCompanyTheRedSheep.CustomStateMachineBehaviours;
 
-public class BaseStateMachineBehaviour : StateMachineBehaviour
+public abstract class BaseStateMachineBehaviour : StateMachineBehaviour
 {
     private ManualLogSource _mls;
     protected string RedSheepId;
@@ -33,7 +34,7 @@ public class BaseStateMachineBehaviour : StateMachineBehaviour
 
     public override void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
-        
+        throw new NotImplementedException("OnStateEnter is not implemented.");
     }
 
     private void HandleSyncRedSheepIdentifier(string receivedRedSheepId)

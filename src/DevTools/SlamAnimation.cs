@@ -11,9 +11,9 @@ namespace LethalCompanyTheRedSheep.DevTools
         public Transform startSlamTransform;
         public Transform endSlamTransform;
         public AnimationCurve slamCurve;
-        public Vector2 cycleDurationRange = new(2f, 2f); // new(0.25f, 0.4f);
+        public Vector2 cycleDurationRange = new(0.225f, 0.275f); 
         public int slamCycles = 4;
-        public float launchForce = 200f;
+        public float launchForce = 5000f;
     
         private bool _isSlamming;
         
@@ -29,8 +29,8 @@ namespace LethalCompanyTheRedSheep.DevTools
         
         private IEnumerator SlamMotion()
         {
-            Debug.Log("Running slam motion");
             _isSlamming = true;
+            ConnectToPlayer();
 
             Vector3 currentEndPosition = GetRandomPointOnLine(startSlamTransform.position, endSlamTransform.position);
 
@@ -62,14 +62,25 @@ namespace LethalCompanyTheRedSheep.DevTools
                     // Calculate the position based on the curve
                     float x = Mathf.Lerp(currentStartPosition.x, currentEndPosition.x, normalizedTime);
                     float y = Mathf.Lerp(currentStartPosition.y, currentEndPosition.y, normalizedTime) + slamCurve.Evaluate(normalizedTime);
+                    float z = Mathf.Lerp(currentStartPosition.z, currentEndPosition.z, normalizedTime);
 
-                    tentacleGrabTarget.position = new Vector3(x, y, currentStartPosition.z);
+                    tentacleGrabTarget.position = new Vector3(x, y, z);
                     yield return null;
                 }
             }
 
             _isSlamming = false;
             Debug.Log("Slam motion finished");
+        }
+
+        private void ConnectToPlayer()
+        {
+            playerBody.transform.position = tentacleGrabTarget.transform.position;
+            
+            playerBody.attachedLimb = playerBody.bodyParts[(int)TheRedSheepClient.DeadPlayerBodyParts.Neck];
+            playerBody.attachedTo = tentacleGrabTarget;
+            playerBody.secondaryAttachedLimb = null;
+            playerBody.secondaryAttachedTo = null;
         }
 
         private void DisconnectFromPlayer(Vector3 start, Vector3 end)
@@ -82,8 +93,8 @@ namespace LethalCompanyTheRedSheep.DevTools
             // Apply force
             Vector3 direction = (end - start).normalized;
             Vector3 force = direction * launchForce;
-            force.y += launchForce * 0.5f;
-            playerBody.bodyParts[(int)TheRedSheepClient.DeadPlayerBodyParts.Root].AddForce(force, ForceMode.Impulse);
+            force.y += launchForce * 1f;
+            playerBody.bodyParts[(int)TheRedSheepClient.DeadPlayerBodyParts.Root].AddForce(force * 0.25f, ForceMode.Impulse);
         }
         
         private static Vector3 GetRandomPointOnLine(Vector3 start, Vector3 end)
@@ -96,7 +107,7 @@ namespace LethalCompanyTheRedSheep.DevTools
         {
             float t =
                 // Pick a point between 0 and the previous end position (left to right)
-                lastCycleDirectionRight ? Random.Range(0f, 0.8f) : // Ensure it is always less than 1
+                lastCycleDirectionRight ? Random.Range(0f, 0.4f) : // Ensure it is always less than 1
                 // Pick a point between the previous end position and 1 (right to left)
                 Random.Range(0.001f, 1f); // Ensure it is always more than 0
 

@@ -15,7 +15,7 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
     public event Action<string, int> OnChangeBehaviourState;
     public event Action<string, int> OnDoAnimation;
     public event Action<string, int, bool> OnChangeAnimationParameterBool;
-    public event Action<string> OnIdleCycleComplete;
+    public event Action<string> OnIdleCompleteStateBehaviourCallback;
     public event Action<string> OnStartTransformation;
     public event Action<string> OnCompleteTransformation;
     public event Action<string> OnIncreaseTargetPlayerFearLevel;
@@ -45,9 +45,9 @@ public class TheRedSheepNetcodeController : NetworkBehaviour
     }
     
     [ServerRpc (RequireOwnership = false)]
-    public void IdleCycleCompleteServerRpc(string receivedRedSheepId)
+    public void IdleCompleteStateBehaviourCallbackServerRpc(string receivedRedSheepId)
     {
-        OnIdleCycleComplete?.Invoke(receivedRedSheepId);
+        OnIdleCompleteStateBehaviourCallback?.Invoke(receivedRedSheepId);
     }
 
     [ClientRpc]
