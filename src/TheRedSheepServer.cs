@@ -356,7 +356,7 @@ public class TheRedSheepServer : EnemyAI
     {
         if (_redSheepId != receivedRedSheepId) return;
 
-        //eye = transformedEye;
+        eye = transformedEye;
         creatureAnimator = transformedAnimator;
         agent.radius = 2.4f;
         agent.height = 6.85f;

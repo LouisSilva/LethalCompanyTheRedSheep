@@ -64,7 +64,8 @@ public class TheRedSheepClient : MonoBehaviour
     [SerializeField] private TheRedSheepNetcodeController netcodeController;
 #pragma warning restore 0649
     
-    [SerializeField] private float walkSpeedThreshold = 4.0f;
+    [Header("Options")][Space(5f)]
+    [SerializeField] private float walkSpeedThreshold = 4.5f;
     [SerializeField] private float maxWalkAnimationSpeedMultiplier = 1.25f;
     [SerializeField] private float fogStartAnimationDuration = 1f;
     [SerializeField] private float fogEndAnimationDuration = 1f;
@@ -243,7 +244,7 @@ public class TheRedSheepClient : MonoBehaviour
             return;
         }
         
-        if (_targetPlayer.HasLineOfSightToPosition(transformedRedSheepEye.transform.position, 115f, 50, 3f))
+        if (_targetPlayer.HasLineOfSightToPosition(transformedRedSheepEye.transform.position, 90f, 50, 3f))
         {
             _targetPlayer.JumpToFearLevel(1);
             _targetPlayer.IncreaseFearLevelOverTime(0.8f);
