@@ -107,9 +107,11 @@ public class DevDeadBodyInfo : MonoBehaviour
                 }
 
                 forceDirection = Vector3.Normalize(attachedTo.position - this.attachedLimb.position);
+                
                 this.attachedLimb.AddForce(
                     forceDirection * (speedMultiplier * Mathf.Clamp(Vector3.Distance(attachedTo.position, this.attachedLimb.position), 0.2f, 2.5f)),
                     ForceMode.VelocityChange);
+                
                 Vector3 velocity = this.attachedLimb.velocity;
                 if (velocity.sqrMagnitude > (double)maxVelocity)
                 {
@@ -121,13 +123,16 @@ public class DevDeadBodyInfo : MonoBehaviour
 
                 if (this.secondaryAttachedLimb == null || secondaryAttachedTo == null) return;
                 forceDirection = Vector3.Normalize(secondaryAttachedTo.position - this.secondaryAttachedLimb.position);
+                
                 this.secondaryAttachedLimb.AddForce(
                     forceDirection * (speedMultiplier * Mathf.Clamp(
                         Vector3.Distance(secondaryAttachedTo.position, this.secondaryAttachedLimb.position), 0.2f,
                         2.5f)), ForceMode.VelocityChange);
+                
                 velocity = this.secondaryAttachedLimb.velocity;
                 if (velocity.sqrMagnitude <= (double)maxVelocity)
                     return;
+                
                 Rigidbody secondaryAttachedLimb = this.secondaryAttachedLimb;
                 velocity = this.secondaryAttachedLimb.velocity;
                 Vector3 vector3_1 = velocity.normalized * maxVelocity;
