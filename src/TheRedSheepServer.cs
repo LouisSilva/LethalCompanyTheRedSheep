@@ -8,7 +8,6 @@ using UnityEngine.Serialization;
 using Logger = BepInEx.Logging.Logger;
 using Random = UnityEngine.Random;
 using Vector3 = UnityEngine.Vector3;
-// ReSharper disable InconsistentNaming
 
 namespace LethalCompanyTheRedSheep;
 
